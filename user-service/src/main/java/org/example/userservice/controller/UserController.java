@@ -2,9 +2,9 @@ package org.example.userservice.controller;
 
 import org.example.userservice.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
 public class UserController {
@@ -13,8 +13,12 @@ public class UserController {
     private UserService userService;
 
     @PostMapping("/internal/user/register")
-    public String register(@RequestParam String phone, @RequestParam String password){
+    public Map<String, Object> register(@RequestBody Map<String, Object> request) {
+        return userService.register(request);
+    }
 
-        return userService.register(phone,password);
+    @PostMapping("/internal/user/login")
+    public Map<String, Object> login(@RequestBody Map<String, Object> request) {
+        return userService.login(request);
     }
 }

@@ -29,5 +29,31 @@
             <artifactId>lombok</artifactId>
         </dependency>
 
+        <!-- Spring Cloud OpenFeign -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+        </dependency>
+
+        <!-- Shiro -->
+        <dependency>
+            <groupId>org.apache.shiro</groupId>
+            <artifactId>shiro-spring-boot-web-starter</artifactId>
+            <version>1.11.0</version>
+        </dependency>
+
+        <!-- Shiro Redis -->
+        <dependency>
+            <groupId>org.crazycake</groupId>
+            <artifactId>shiro-redis-spring-boot-starter</artifactId>
+            <version>3.3.1</version>
+        </dependency>
+
+        <!-- 引用 common 模块 -->
+        <dependency>
+            <groupId>org.example</groupId>
+            <artifactId>common</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
     </dependencies>
 </project>
