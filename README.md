@@ -1,6 +1,12 @@
 # SpringBoot_DevOps
 2026春-SpringBoot微服务设计与DevOps实践
 
+## 文档说明
+* 统一接口文档：[API.md](./docs/API.md)
+* 技术决策记录：[ADR.md](./docs/ADR.md)
+* 数据模型设计：[DATA_MODEL.md](./docs/DATA_MODEL.md)
+* 分工：[COLLABORATION.md](./docs/COLLABORATION.md)
+
 ## 配置文件说明 
 * 路径：/SpringBoot_DevOps/user-service/src/main/resources/
 * 作用：端口和数据库配置
