@@ -39,4 +39,53 @@ cd ~/SpringBoot_DevOps/topbiz
 mvn spring-boot:run  
 
 ### 测试示例
-curl -X POST "http://localhost:8080/api/v1/register" -d "phone=13800000000&password=123456"  
+#### 注册
+curl -X POST "http://localhost:8080/api/v1/register" -H "Content-Type: application/json" -d "{\"phone\":\"13800000001\", \"password\":\"123456\"}"
+
+#### 登录
+curl -X POST "http://localhost:8080/api/v1/login" -H "Content-Type: application/json" -d "{\"phone\":\"13800000001\", \"password\":\"123456\"}"
+
+## 数据库存储
+### devops_user
+
+```sql
+-- 创建数据库（如果还没有）
+CREATE DATABASE IF NOT EXISTS devops_user DEFAULT CHARACTER SET utf8mb4;
+
+USE devops_user;
+
+-- 用户主体表
+CREATE TABLE IF NOT EXISTS `user` (
+`id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+`display_name` VARCHAR(128) NOT NULL COMMENT '显示名',
+`status` VARCHAR(32) NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE/LOCKED/DEREGISTERED',
+`is_deleted` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+`created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+`updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- 认证凭证表
+CREATE TABLE IF NOT EXISTS `user_auth` (
+`auth_id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+`user_id` BIGINT NOT NULL COMMENT '关联 user.id',
+`identity_type` VARCHAR(32) NOT NULL COMMENT 'PHONE/EMAIL/USERNAME',
+`identifier` VARCHAR(255) NOT NULL COMMENT '手机号/邮箱/用户名',
+`secret_hash` VARCHAR(255) NOT NULL COMMENT 'BCrypt 哈希',
+`verified` TINYINT(1) DEFAULT 1 COMMENT '是否已验证',
+`created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+UNIQUE KEY `uk_identity` (`identity_type`, `identifier`),
+KEY `idx_user_id` (`user_id`)
+);
+```
+
+### devops_message
+
+```sql
+
+```
+
+### devops_log
+
+```sql
+
+```

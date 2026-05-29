@@ -15,6 +15,10 @@ public class Result<T> {
         return new Result<>(0, "ok", data);
     }
 
+    public static <T> Result<T> ok() {
+        return new Result<>(0, "ok", null);
+    }
+
     public static <T> Result<T> error(int code, String message) {
         return new Result<>(code, message, null);
     }

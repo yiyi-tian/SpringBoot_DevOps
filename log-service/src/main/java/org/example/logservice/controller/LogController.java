@@ -1,40 +1,53 @@
 package org.example.logservice.controller;
 
+import org.example.logservice.service.LogService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.HashMap;
 import java.util.Map;
 
 @RestController
 public class LogController {
 
-    /**
-     * 业务审计日志记录
-     */
+    @Autowired
+    private LogService logService;
+
+    // ==================== 审计日志 ====================
     @PostMapping("/internal/log/record")
-    public Map<String, Object> record(@RequestBody Map<String, Object> request) {
+    public Map<String, Object> recordAudit(@RequestBody Map<String, Object> request) {
+        return logService.recordAudit(request);
+    }
 
-        String traceId = (String) request.get("trace_id");
-        Long userId = request.get("user_id") != null ?
-                Long.valueOf(String.valueOf(request.get("user_id"))) : null;
-        String operation = (String) request.get("operation");
-        Boolean success = (Boolean) request.get("success");
-        String targetId = (String) request.get("target_id");
-        String detail = (String) request.get("detail");
+    @GetMapping("/internal/log/{userId}/query")
+    public Map<String, Object> queryUserAudit(@PathVariable Long userId, @RequestParam Map<String, Object> params) {
+        return logService.queryUserAudit(userId, params);
+    }
 
-        // 打印日志（后续需要写入 MySQL audit_log 表）
-        System.out.println("=== 审计日志 ===");
-        System.out.println("  trace_id: " + traceId);
-        System.out.println("  user_id: " + userId);
-        System.out.println("  operation: " + operation);
-        System.out.println("  success: " + success);
-        System.out.println("  target_id: " + targetId);
-        System.out.println("  detail: " + detail);
+    // ==================== 运维日志 ====================
+    @GetMapping("/internal/log/ops/query")
+    public Map<String, Object> queryOpsLogs(@RequestParam Map<String, Object> params) {
+        return logService.queryOpsLogs(params);
+    }
 
-        // 返回成功
-        Map<String, Object> result = new HashMap<>();
-        result.put("code", 0);
-        result.put("message", "ok");
-        return result;
+    // ==================== 指标查询 ====================
+    @GetMapping("/internal/log/metrics")
+    public Map<String, Object> queryMetrics(@RequestParam Map<String, Object> params) {
+        return logService.queryMetrics(params);
+    }
+
+    // ==================== 日志导出 ====================
+    @PostMapping("/internal/log/ops/export")
+    public Map<String, Object> exportLogs(@RequestBody Map<String, Object> request) {
+        return logService.exportLogs(request);
+    }
+
+    // ==================== 指标配置 ====================
+    @GetMapping("/internal/log/metrics/config")
+    public Map<String, Object> getMetricsConfig() {
+        return logService.getMetricsConfig();
+    }
+
+    @PutMapping("/internal/log/metrics/config")
+    public Map<String, Object> updateMetricsConfig(@RequestBody Map<String, Object> request) {
+        return logService.updateMetricsConfig(request);
     }
 }
