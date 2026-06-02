@@ -29,17 +29,17 @@
             <artifactId>lombok</artifactId>
         </dependency>
 
-        <!-- Spring Cloud OpenFeign -->
+        <!-- Spring WebFlux（HTTP Interface 底层用 WebClient） -->
         <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-openfeign</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
         </dependency>
 
         <!-- Shiro -->
         <dependency>
             <groupId>org.apache.shiro</groupId>
             <artifactId>shiro-spring-boot-web-starter</artifactId>
-            <version>1.11.0</version>
+            <version>1.13.0</version>
         </dependency>
 
         <!-- Shiro Redis -->

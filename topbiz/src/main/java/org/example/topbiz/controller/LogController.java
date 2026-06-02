@@ -4,6 +4,7 @@ import org.example.common.Result;
 import org.example.topbiz.service.LogService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+import org.apache.shiro.SecurityUtils;
 
 import java.util.Map;
 
@@ -16,8 +17,11 @@ public class LogController {
 
     @GetMapping("/log")
     public Result<Map<String, Object>> queryUserAudit(@RequestParam Map<String, Object> params) {
-        // TODO: 从 Shiro 会话获取当前 userId
-        Long userId = 1L;
+        // 从 Shiro 会话获取当前 userId
+        Long userId = getCurrentUserId();
+        if (userId == null) {
+            return Result.error(401, "未登录");
+        }
         return Result.ok(logService.queryUserAudit(userId, params));
     }
 
@@ -44,5 +48,17 @@ public class LogController {
     @PutMapping("/log/metrics/config")
     public Result<Map<String, Object>> updateMetricsConfig(@RequestBody Map<String, Object> request) {
         return Result.ok(logService.updateMetricsConfig(request));
+    }
+
+    /**
+     * 从 Shiro 会话获取当前用户 ID
+     */
+    private Long getCurrentUserId() {
+        try {
+            String userId = (String) SecurityUtils.getSubject().getPrincipal();
+            return userId != null ? Long.valueOf(userId) : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

@@ -38,9 +38,15 @@ public class AuthService {
     public Map<String, Object> register(String credential, String password, String code) {
         String credentialType = detectCredentialType(credential);
 
-        // TODO: 如果是验证码注册（code != null），先调用 message-service 校验验证码
-        if (code != null) {
-            // verifyCode(credentialType, credential, "REGISTER", code);
+        // 验证码注册：先校验验证码
+        if (code != null && !code.isEmpty()) {
+            boolean valid = verifyCode(credentialType, credential, "REGISTER", code);
+            if (!valid) {
+                Map<String, Object> errorResult = new HashMap<>();
+                errorResult.put("code", 400);
+                errorResult.put("message", "验证码错误或已过期");
+                return errorResult;
+            }
         }
 
         // 调用 user-service 注册
@@ -73,9 +79,15 @@ public class AuthService {
     public Map<String, Object> login(String credential, String password, String code) {
         String credentialType = detectCredentialType(credential);
 
-        // TODO: 如果是验证码登录（code != null），先校验验证码
-        if (code != null) {
-            // verifyCode(credentialType, credential, "LOGIN", code);
+        // 验证码登录：先校验验证码
+        if (code != null && !code.isEmpty()) {
+            boolean valid = verifyCode(credentialType, credential, "LOGIN", code);
+            if (!valid) {
+                Map<String, Object> errorResult = new HashMap<>();
+                errorResult.put("code", 400);
+                errorResult.put("message", "验证码错误或已过期");
+                return errorResult;
+            }
         }
 
         // 调用 user-service 登录
@@ -147,15 +159,17 @@ public class AuthService {
      * 校验验证码
      */
     private boolean verifyCode(String credentialType, String target, String scene, String code) {
-        // TODO: 调用 message-service 校验验证码
-        // Map<String, Object> request = new HashMap<>();
-        // request.put("credentialType", credentialType);
-        // request.put("target", target);
-        // request.put("scene", scene);
-        // request.put("code", code);
-        // Map<String, Object> result = messageServiceClient.verifyCode(request);
-        // return "0".equals(String.valueOf(result.get("code")));
-        return true;
+        try {
+            Map<String, Object> request = new HashMap<>();
+            request.put("credentialType", credentialType);
+            request.put("target", target);
+            request.put("scene", scene);
+            request.put("code", code);
+            Map<String, Object> result = messageServiceClient.verifyCode(request);
+            return "0".equals(String.valueOf(result.get("code")));
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**
@@ -168,7 +182,7 @@ public class AuthService {
     }
 
     /**
-     * 提取凭证字段（兼容 phone/email/username/credential）
+     * 提取凭证字段（兼容 phone/email/username）
      */
     public String extractCredential(Map<String, Object> request) {
         return (String) request.getOrDefault("credential",
@@ -189,7 +203,7 @@ public class AuthService {
             msgRequest.put("variables", new HashMap<>());
             messageServiceClient.sendInstant(msgRequest);
         } catch (Exception e) {
-            // TODO: 记录失败日志
+            System.err.println("发送欢迎信失败: " + e.getMessage());
         }
     }
 
@@ -206,7 +220,7 @@ public class AuthService {
             logRequest.put("target_id", targetId);
             logServiceClient.recordAudit(logRequest);
         } catch (Exception e) {
-            // TODO: 记录失败日志
+            System.err.println("记录审计日志失败: " + e.getMessage());
         }
     }
 }

@@ -20,7 +20,6 @@ public class ShiroConfig {
 
     @Bean
     public ShiroFilterFactoryBean shiroFilterFactoryBean() {
-        // 将自定义 Realm 设置到 SecurityManager
         org.apache.shiro.mgt.DefaultSecurityManager sm =
                 (org.apache.shiro.mgt.DefaultSecurityManager) securityManager;
         sm.setRealm(shiroRealm);
@@ -30,8 +29,14 @@ public class ShiroConfig {
 
         Map<String, String> filterMap = new LinkedHashMap<>();
 
+        // 公开接口
         filterMap.put("/api/v1/register/**", "anon");
         filterMap.put("/api/v1/login/**", "anon");
+
+        // 管理员接口需要 admin 角色
+        filterMap.put("/api/v1/admin/**", "roles[admin]");
+
+        // 其他接口需要登录
         filterMap.put("/api/v1/**", "authc");
 
         filterBean.setFilterChainDefinitionMap(filterMap);

@@ -1,73 +1,79 @@
 package org.example.topbiz.feign;
 
-import org.springframework.cloud.openfeign.FeignClient;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.service.annotation.*;
+
 import java.util.Map;
 
-@FeignClient(name = "message-service", url = "http://localhost:8082")
+@HttpExchange("/internal")
 public interface MessageServiceClient {
 
-    @PostMapping("/internal/messages/instant")
+    @PostExchange("/messages/instant")
     Map<String, Object> sendInstant(@RequestBody Map<String, Object> request);
 
-    @PostMapping("/internal/messages/scheduled")
+    @PostExchange("/messages/scheduled")
     Map<String, Object> sendScheduled(@RequestBody Map<String, Object> request);
 
-    @PostMapping("/internal/message/email_code/send")
+    @PostExchange("/message/email_code/send")
     Map<String, Object> sendEmailCode(@RequestBody Map<String, Object> request);
 
-    @PostMapping("/internal/message/phone_code/send")
+    @PostExchange("/message/phone_code/send")
     Map<String, Object> sendPhoneCode(@RequestBody Map<String, Object> request);
 
+    @PostExchange("/message/verify")
+    Map<String, Object> verifyCode(@RequestBody Map<String, Object> request);
+
     // 模板管理
-    @PostMapping("/internal/message-templates")
+    @PostExchange("/message-templates")
     Map<String, Object> createTemplate(@RequestBody Map<String, Object> request);
 
-    @GetMapping("/internal/message-templates")
+    @GetExchange("/message-templates")
     Map<String, Object> queryTemplates(@RequestParam Map<String, Object> params);
 
-    @PutMapping("/internal/message-templates")
+    @PutExchange("/message-templates")
     Map<String, Object> updateTemplate(@RequestBody Map<String, Object> request);
 
     // 变量管理
-    @GetMapping("/internal/variables/schema")
+    @GetExchange("/variables/schema")
     Map<String, Object> getVariableSchema();
 
-    @PostMapping("/internal/variables")
+    @PostExchange("/variables")
     Map<String, Object> createVariable(@RequestBody Map<String, Object> request);
 
-    @GetMapping("/internal/variables/{variableId}")
+    @GetExchange("/variables/{variableId}")
     Map<String, Object> getVariable(@PathVariable String variableId);
 
-    @PutMapping("/internal/variables/{variableId}")
+    @PutExchange("/variables/{variableId}")
     Map<String, Object> updateVariable(@PathVariable String variableId, @RequestBody Map<String, Object> request);
 
-    @DeleteMapping("/internal/variables/{variableId}")
+    @DeleteExchange("/variables/{variableId}")
     Map<String, Object> deleteVariable(@PathVariable String variableId);
 
     // 载体管理
-    @GetMapping("/internal/msg/carriers")
+    @GetExchange("/msg/carriers")
     Map<String, Object> getCarriers(@RequestParam(required = false) String channelType);
 
-    @GetMapping("/internal/msg/carriers/{id}")
+    @GetExchange("/msg/carriers/{id}")
     Map<String, Object> getCarrier(@PathVariable Long id);
 
-    @PostMapping("/internal/msg/carriers")
+    @PostExchange("/msg/carriers")
     Map<String, Object> createCarrier(@RequestBody Map<String, Object> request);
 
-    @PutMapping("/internal/msg/carriers/{id}")
+    @PutExchange("/msg/carriers/{id}")
     Map<String, Object> updateCarrier(@PathVariable Long id, @RequestBody Map<String, Object> request);
 
-    @DeleteMapping("/internal/msg/carriers/{id}")
+    @DeleteExchange("/msg/carriers/{id}")
     Map<String, Object> deleteCarrier(@PathVariable Long id);
 
-    @PostMapping("/internal/msg/carriers/{id}/test")
+    @PostExchange("/msg/carriers/{id}/test")
     Map<String, Object> testCarrier(@PathVariable Long id);
 
     // 发送记录
-    @GetMapping("/internal/sending-records")
+    @GetExchange("/sending-records")
     Map<String, Object> getSendingRecords(@RequestParam Map<String, Object> params);
 
-    @DeleteMapping("/internal/sending-records")
+    @DeleteExchange("/sending-records")
     Map<String, Object> deleteSendingRecord(@RequestBody Map<String, Object> request);
 }
