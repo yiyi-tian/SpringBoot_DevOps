@@ -4,6 +4,7 @@ import org.apache.shiro.authc.AuthenticationException;
 import org.apache.shiro.authz.AuthorizationException;
 import org.apache.shiro.authz.UnauthorizedException;
 import org.example.common.Result;
+import org.example.topbiz.exception.InternalServiceException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
@@ -22,6 +23,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({UnauthorizedException.class, AuthorizationException.class})
     public Result<String> handleAuthorizationException(Exception e) {
         return Result.error(403, "权限不足，无法访问该资源");
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public Result<String> handleIllegalArgumentException(IllegalArgumentException e) {
+        return Result.error(400, e.getMessage());
+    }
+
+    @ExceptionHandler(InternalServiceException.class)
+    public Result<String> handleInternalServiceException(InternalServiceException e) {
+        return Result.error(e.getCode(), e.getMessage());
     }
 
     // HTTP Interface 调用异常（替代 FeignException）

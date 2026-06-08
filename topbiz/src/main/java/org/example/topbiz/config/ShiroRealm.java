@@ -34,9 +34,18 @@ public class ShiroRealm extends AuthorizingRealm {
             Map<String, Object> result = userServiceClient.getPermissions(Long.valueOf(userId));
             if (result != null && "0".equals(String.valueOf(result.get("code")))) {
                 Map<String, Object> data = (Map<String, Object>) result.get("data");
-                List<String> permissions = (List<String>) data.get("permissions");
-                if (permissions != null) {
-                    info.addStringPermissions(permissions);
+                if (data != null) {
+                    List<String> permissions = (List<String>) data.get("permissions");
+                    if (permissions != null) {
+                        info.addStringPermissions(permissions);
+                    }
+                    List<String> roles = (List<String>) data.get("roles");
+                    if (roles != null) {
+                        roles.forEach(info::addRole);
+                    }
+                    if (Boolean.TRUE.equals(data.get("is_admin"))) {
+                        info.addRole("admin");
+                    }
                 }
             }
         } catch (Exception e) {

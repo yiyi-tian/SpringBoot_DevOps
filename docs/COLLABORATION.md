@@ -5,11 +5,11 @@
 
 | 模块 | 框架完成度 | 核心实现 | 待完善 |
 |------|-----------|----------|--------|
-| common | ✅ 100% | Result、TraceIdFilter、AccessLogInterceptor | - |
-| topbiz | ✅ 90% | 注册/登录、Shiro、Feign、自动识别凭证 | 验证码接口、Shiro权限 |
-| user-service | ✅ 80% | 注册/登录（BCrypt）、Entity/Mapper | 管理员CRUD、权限查询 |
-| message-service | ✅ 60% | 即时发送骨架 | 验证码、载体、模板 |
-| log-service | ✅ 50% | 审计日志骨架 | MySQL持久化、ClickHouse查询 |
+| common | ✅ 100% | Result、TraceIdFilter、AccessLogInterceptor（JSONL 写盘、脱敏、保留清理、慢请求 WARN） | - |
+| topbiz | ✅ 95% | 注册/登录、Shiro 2 + Spring Session Redis、Log API 代理（admin）、HTTP Interface + WebClient（Trace 头修复）、错误码映射 | 验证码接口 |
+| user-service | ✅ 85% | 注册/登录（BCrypt）、MyBatis-Plus Boot3、Entity/Mapper、getPermissions/admin 最小判定 | 管理员 CRUD、完整 RBAC |
+| message-service | ✅ 60% | 即时发送骨架 | 验证码、datasource、载体、模板 |
+| log-service | ✅ 95% | 审计 MySQL 持久化、ClickHouse 查询/指标/导出、阈值配置、预聚合；dev 配置模板 | WebSocket 告警 |
 
 ---
 
@@ -22,7 +22,7 @@
 | 优先级 | 模块 | 任务 | 对应文件 |
 |--------|------|------|----------|
 | 🔴 P0 | topbiz | 实现验证码注册/登录 4 个接口 | `AuthController.java`、`AuthService.java` |
-| 🔴 P0 | topbiz | 完善 Shiro 权限校验 | `ShiroRealm.java` |
+| 🟡 P1 | topbiz | 完整 RBAC 权限表（当前 admin 最小判定已实现） | `ShiroRealm.java`、user-service 权限 API |
 | 🔴 P0 | message | 实现验证码发送（邮箱+手机） | `MessageService.java`（sendEmailCode/sendPhoneCode） |
 | 🔴 P0 | message | 实现验证码校验 | `MessageService.java`（verifyCode） |
 | 🔴 P0 | message | 创建 MySQL 表 | `msg_carrier`、`msg_task`、`msg_message` |
@@ -49,7 +49,7 @@ topbiz/
 │   ├── MessageService.java
 │   └── LogService.java
 └── config/
-    └── ShiroRealm.java              ← 完善权限查询
+    └── ShiroRealm.java              ← admin 判定已实现；完整 RBAC 待扩展
 
 message-service/
 ├── controller/
@@ -70,7 +70,7 @@ message-service/
 |--------|------|------|----------|
 | 🔴 P0 | user | 创建 MySQL 表 | `user`、`user_auth` |
 | 🔴 P0 | user | 实现用户注销/登出 | `UserService.java`（deregister/logout） |
-| 🔴 P0 | user | 实现用户权限查询 | `UserService.java`（getPermissions） |
+| 🔴 P0 | user | 实现用户权限查询 | `UserService.java`（getPermissions，含 admin 最小判定） |
 | 🔴 P0 | user | 实现用户分组查询 | `UserService.java`（getGroups） |
 | 🟡 P1 | user | 实现管理员 CRUD（用户） | `UserService.java`（createUser/deleteUser/updateUser/searchUsers） |
 | 🟡 P1 | user | 实现管理员 CRUD（分组） | `UserService.java`（groups 相关） |
@@ -221,7 +221,7 @@ main 分支：保持稳定，只合并已验证的功能
 |------|------|------|
 | API 接口定义 | `API.md` | 接口路径、参数、响应 |
 | 数据模型设计 | `DATA_MODEL.md` | 表结构、字段说明 |
-| 技术决策记录 | `ADR.md` | BCrypt/Shiro/Feign/日志 决策 |
+| 技术决策记录 | `ADR.md` | BCrypt/Shiro/HTTP Interface/日志 决策 |
 | 日志服务设计 | 飞书 `logservice.md` | ClickHouse 表、指标定义 |
 | 消息服务设计 | 飞书 `msgservice.md` | 模板、载体设计 |
 | 用户服务设计 | 飞书 `userservice.md` | 用例、泳道图 |

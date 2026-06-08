@@ -19,6 +19,9 @@ public interface LogServiceClient {
     @GetExchange("/log/ops/query")
     Map<String, Object> queryOpsLogs(@RequestParam Map<String, Object> params);
 
+    @PostExchange("/log/ops/query")
+    Map<String, Object> queryOpsLogsPost(@RequestBody Map<String, Object> request);
+
     @GetExchange("/log/metrics")
     Map<String, Object> queryMetrics(@RequestParam Map<String, Object> params);
 

@@ -1,0 +1,180 @@
+version: "3.8"
+
+volumes:
+  access_logs:
+  mysql_data:
+  clickhouse_data:
+  redis_data:
+  vector_data:
+
+networks:
+  devops:
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: devops-mysql
+    networks: [devops]
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ../docs/sql/00_docker_mysql_init.sql:/docker-entrypoint-initdb.d/00_docker_mysql_init.sql:ro
+      - ../docs/sql/01_devops_log.sql:/docker-entrypoint-initdb.d/01_devops_log.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: devops-redis
+    networks: [devops]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8
+    container_name: devops-clickhouse
+    networks: [devops]
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ../docs/sql/04_clickhouse_access_log.sql:/docker-entrypoint-initdb.d/04_clickhouse_access_log.sql:ro
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+  user-service:
+    build:
+      context: ..
+      dockerfile: infra/docker/Dockerfile.service
+      args:
+        SERVICE_MODULE: user-service
+        SERVICE_PORT: 8081
+    container_name: devops-user-service
+    networks: [devops]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    volumes:
+      - access_logs:/app/logs/access
+
+  message-service:
+    build:
+      context: ..
+      dockerfile: infra/docker/Dockerfile.service
+      args:
+        SERVICE_MODULE: message-service
+        SERVICE_PORT: 8082
+    container_name: devops-message-service
+    networks: [devops]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8082:8082"
+    volumes:
+      - access_logs:/app/logs/access
+
+  log-service:
+    build:
+      context: ..
+      dockerfile: infra/docker/Dockerfile.service
+      args:
+        SERVICE_MODULE: log-service
+        SERVICE_PORT: 8083
+    container_name: devops-log-service
+    networks: [devops]
+    depends_on:
+      mysql:
+        condition: service_healthy
+      clickhouse:
+        condition: service_started
+    ports:
+      - "8083:8083"
+    volumes:
+      - access_logs:/app/logs/access
+
+  topbiz:
+    build:
+      context: ..
+      dockerfile: infra/docker/Dockerfile.service
+      args:
+        SERVICE_MODULE: topbiz
+        SERVICE_PORT: 8080
+    container_name: devops-topbiz
+    networks: [devops]
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    depends_on:
+      - user-service
+      - message-service
+      - log-service
+      - redis
+    ports:
+      - "8080:8080"
+    volumes:
+      - access_logs:/app/logs/access
+
+  clickhouse-init:
+    image: clickhouse/clickhouse-server:23.8
+    container_name: devops-clickhouse-init
+    networks: [devops]
+    depends_on:
+      - clickhouse
+    volumes:
+      - ../docs/sql/04_clickhouse_access_log.sql:/init/04_clickhouse_access_log.sql:ro
+      - ../docs/sql/05_clickhouse_metrics_aggregate.sql:/init/05_clickhouse_metrics_aggregate.sql:ro
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        until clickhouse-client --host clickhouse --query "SELECT 1" >/dev/null 2>&1; do sleep 2; done
+        clickhouse-client --host clickhouse --multiquery < /init/04_clickhouse_access_log.sql
+        if [ $? -ne 0 ]; then echo "ClickHouse init 04 failed" >&2; exit 1; fi
+        clickhouse-client --host clickhouse --multiquery < /init/05_clickhouse_metrics_aggregate.sql
+        if [ $? -ne 0 ]; then echo "ClickHouse init 05 failed" >&2; exit 1; fi
+        echo "ClickHouse init done"
+
+  vector:
+    image: timberio/vector:0.35.0-alpine
+    container_name: devops-vector
+    networks: [devops]
+    depends_on:
+      - clickhouse
+    volumes:
+      - access_logs:/var/log/access:ro
+      - vector_data:/var/lib/vector
+      - ./vector/vector.toml:/etc/vector/vector.toml:ro
+    command: ["--config", "/etc/vector/vector.toml"]
+
+  log-cleaner:
+    image: alpine:3.19
+    container_name: devops-log-cleaner
+    networks: [devops]
+    depends_on:
+      - vector
+    volumes:
+      - access_logs:/var/log/access
+      - ./scripts/clean-access-logs.sh:/usr/local/bin/clean-access-logs.sh:ro
+    environment:
+      ACCESS_LOG_DIR: /var/log/access
+      RETENTION_DAYS: "1"
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        chmod +x /usr/local/bin/clean-access-logs.sh
+        echo "0 2 * * * /usr/local/bin/clean-access-logs.sh >> /var/log/clean.log 2>&1" > /etc/crontabs/root
+        crond -f -l 8

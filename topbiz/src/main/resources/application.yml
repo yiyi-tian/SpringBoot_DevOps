@@ -1,23 +1,31 @@
 server:
   port: 8080
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        name: JSESSIONID
 
 spring:
+  profiles:
+    active: dev
   application:
     name: topbiz
-  redis:
-    host: localhost
-    port: 6379
+  session:
+    timeout: 30m
+    redis:
+      namespace: shiro:session
 
 shiro:
   sessionManager:
     sessionIdUrlRewritingEnabled: false
-  redis:
-    host: localhost
-    port: 6379
 
-feign:
-  client:
-    config:
-      default:
-        connectTimeout: 3000
-        readTimeout: 10000
+devops:
+  access-log:
+    service-name: topbiz
+    output-dir: shared-logs/access
+    file-pattern: "access-{date}.jsonl"
+    log-body: true
+    body-on-error-only: true
+    max-body-length: 4096
+    slow-request-threshold-ms: 3000

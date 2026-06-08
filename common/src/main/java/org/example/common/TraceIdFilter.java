@@ -26,6 +26,7 @@ public class TraceIdFilter extends OncePerRequestFilter {
             traceId = UUID.randomUUID().toString();
         }
         MDC.put(TRACE_ID_KEY, traceId);
+        response.setHeader(TRACE_ID_HEADER, traceId);
         try {
             filterChain.doFilter(request, response);
         } finally {

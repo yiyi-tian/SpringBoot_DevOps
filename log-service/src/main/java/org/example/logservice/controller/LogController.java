@@ -28,6 +28,11 @@ public class LogController {
         return logService.queryOpsLogs(params);
     }
 
+    @PostMapping("/internal/log/ops/query")
+    public Map<String, Object> queryOpsLogsPost(@RequestBody Map<String, Object> request) {
+        return logService.queryOpsLogs(request);
+    }
+
     // ==================== 指标查询 ====================
     @GetMapping("/internal/log/metrics")
     public Map<String, Object> queryMetrics(@RequestParam Map<String, Object> params) {

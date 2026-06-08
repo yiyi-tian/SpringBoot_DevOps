@@ -18,9 +18,9 @@
 
 1. **客户端 / 前端只访问 TopBiz**（`http://localhost:8080/api/v1/*`）。
 2. **禁止直连** User / Message / Log（8081–8083）；内部接口无公网暴露假设。
-3. **会话仅存在于 TopBiz**：登录后由 TopBiz + **Apache Shiro** 管理（md 要求，不用 JWT）；内部调用**不**携带浏览器 Session。
+3. **会话仅存在于 TopBiz**：登录后由 TopBiz + **Apache Shiro** 管理（md 要求，不用 JWT）；Session 持久化在 **Redis**（Spring Session，`JSESSIONID` Cookie）；内部调用**不**携带浏览器 Session。
 4. **领域数据归属**：用户数据只在 user-service；消息模板/载体只在 message-service；日志只在 log-service。TopBiz **不落库、不实现领域逻辑**，只做编排。表结构见 [DATA_MODEL.md](./DATA_MODEL.md)。
-5. **链路追踪**：入口在 TopBiz 生成或接收 `trace_id`，经 Header `X-Trace-Id` 透传到四服务 **AccessLogInterceptor** 及 Feign 出站（见 [logservice.md](../../logservice.md) §4–§5、[ADR.md](../ADR.md) §6、[§1.6](#16-日志架构拦截器--双存储)）。
+5. **链路追踪**：入口在 TopBiz 生成或接收 `trace_id`，经 Header `X-Trace-Id` 透传到四服务 **AccessLogInterceptor** 及 **HTTP Interface（WebClient）** 出站（见 [logservice.md](../../logservice.md) §4–§5、[ADR.md](../ADR.md) §6、[§1.6](#16-日志架构拦截器--双存储)）。
 6. **跨服务禁止复制用户表**：message-service **不**维护完整 `user` 档案表，仅保存 `initiator_user_id`、`receiver` 等逻辑 ID（见 DATA_MODEL §3）。
 
 ### 1.3 Message 内部路径映射
@@ -125,6 +125,16 @@ Client  →  topbiz POST /api/v1/variables
 
 **`req_params` / `res_body` 记录策略**（[ADR.md](../ADR.md) §6.2）：默认脱敏 + 长度截断；可配置 `body-on-error-only`（仅 `http_status>=400` 或 `biz_code!=0` 时记全量）。`cost_ms` > 3000ms 时应用日志 **WARN**（logservice §5.1 慢请求）。
 
+**JSONL 写盘路径**（与 [README.md](../README.md) 目录说明一致）：
+
+| 场景 | 路径 |
+|------|------|
+| IDE 本地 `mvn spring-boot:run` | `shared-logs/access/{serviceName}/access-{date}.jsonl` |
+| Docker 全栈部署 | 容器内 `logs/access/{serviceName}/access-{date}.jsonl`（compose 卷 `access_logs`） |
+| Vector 采集 | `/var/log/access/*/*.jsonl`（local compose 将 `shared-logs/access` 挂载到该路径） |
+
+> **本地开发环境**：MySQL/Redis 连云端；ClickHouse/Vector 本机 Docker（见 [变更汇总.md](./变更汇总.md)）。
+
 > user-service / message-service **不**应对外 Client 暴露，但仍须拦截 **TopBiz 发来的 internal 请求**并记 `uri` 为 internal 路径（如 `/internal/user/login`）。
 
 ---
@@ -137,7 +147,7 @@ Client  →  topbiz POST /api/v1/variables
 **表格列说明**
 
 - **必做**：`是` = 课程 MVP（§1.5）；`选修` = 扩展能力。
-- **鉴权**：`无` = 注册/登录前；`Shiro` = 需 TopBiz 会话（管理员/已登录用户）。
+- **鉴权**：`无` = 注册/登录前；`Shiro` = 需 TopBiz 会话；`Shiro + admin` = 需管理员角色（`roles[admin]`）。
 - **规格状态**：`planned` = 仅文档；`partial` = 部分实现；`done` = 与当前代码一致（极少）。
 
 > **访问日志**：凡经 topbiz / user / message / log 的 HTTP，均由该服务 **AccessLogInterceptor** 写入本地 JSON，再经 Vector 入库 ClickHouse；**编排链中不必也不应逐条列出**。  
@@ -167,10 +177,13 @@ Client  →  topbiz POST /api/v1/variables
 |------|------|------|------|----------|----------|
 | GET | `/api/v1/permissions` | 查看当前用户权限 | Shiro | `user-service GET /internal/user/{userId}/permissions` | planned |
 | GET | `/api/v1/groups` | 查看当前用户分组 | Shiro | `user-service GET /internal/user/{userId}/groups` | planned |
-| GET | `/api/v1/log` | **用户审计历史**（MySQL `audit_log`） | Shiro | `log-service GET /internal/log/{userId}/query` | planned |
-| GET | `/api/v1/log/ops/query` | **运维原始日志查询**（ClickHouse） | Shiro | `log-service GET /internal/log/ops/query` | planned |
-| GET | `/api/v1/log/metrics` | **日志指标**（QPS/P99/错误率等，logservice §1.2） | Shiro | `log-service GET /internal/log/metrics` | planned |
-| POST | `/api/v1/log/ops/export` | 导出日志 CSV/JSON/TXT | Shiro | `log-service POST /internal/log/ops/export` | planned |
+| GET | `/api/v1/log` | **用户审计历史**（MySQL `audit_log`） | Shiro + admin | `log-service GET /internal/log/{userId}/query` | done |
+| GET | `/api/v1/log/ops/query` | **运维原始日志查询**（ClickHouse） | Shiro + admin | `log-service GET /internal/log/ops/query` | done |
+| POST | `/api/v1/log/ops/query` | **运维日志复杂查询**（JSON 条件） | Shiro + admin | `log-service POST /internal/log/ops/query` | done |
+| GET | `/api/v1/log/metrics` | **日志指标**（QPS/P99/错误率等，logservice §1.2） | Shiro + admin | `log-service GET /internal/log/metrics` | done |
+| POST | `/api/v1/log/ops/export` | 导出日志 CSV/JSON/TXT | Shiro + admin | `log-service POST /internal/log/ops/export` | done |
+| GET | `/api/v1/log/metrics/config` | 读取指标告警阈值 | Shiro + admin | `log-service GET /internal/log/metrics/config` | done |
+| PUT | `/api/v1/log/metrics/config` | 更新指标告警阈值 | Shiro + admin | `log-service PUT /internal/log/metrics/config` | done |
 
 > **勿混淆**：`GET /api/v1/log` = 业务**审计**（谁注册/登录/删用户）；`GET /api/v1/log/ops/query` = **访问/运维日志**（拦截器 + ClickHouse，按 trace_id/service 检索）。  
 > 查询参数见 §5（`service_name`、`start_time`、`end_time`、`trace_id`、`keyword`、`level` 等）。
@@ -376,9 +389,9 @@ TopBiz 鉴权后转发；User 服务不对外。
 | 业务审计 | TopBiz 编排 **`POST /internal/log/record`** | MySQL **`audit_log`** | 是 |
 | 指标查询 | **`GET /internal/log/metrics`**（查询时聚合，§3.7） | ClickHouse | 是 |
 | 运维检索/导出 | `ops/query`、`ops/export` | ClickHouse | 是 |
-| 指标阈值配置 | **`GET/PUT /internal/log/metrics/config`**（logservice §1.3） | MySQL 配置表 | 选修 |
+| 指标阈值配置 | **`GET/PUT /internal/log/metrics/config`**（logservice §1.3） | MySQL 配置表 | 是 |
 | 监控 WebSocket 推送 | log-service 自驱（logservice §2.4） | — | 选修 |
-| 定时预聚合 | `@Scheduled` 写 `metrics_aggregate`（§2.3） | ClickHouse | 选修 |
+| 定时预聚合 | `@Scheduled` 写 `metrics_aggregate`（§2.3） | ClickHouse | 是 |
 
 **访问日志**：log-service 自身亦部署拦截器，`service_name=log`。
 
@@ -405,7 +418,7 @@ TopBiz 鉴权后转发；User 服务不对外。
 
 | 方法 | 路径 | 说明 | 调用方 | 对外代理 | 规格状态 |
 |------|------|------|--------|----------|----------|
-| GET | `/internal/log/{userId}/query` | 按用户查审计列表 | TopBiz | `GET /api/v1/log` | planned |
+| GET | `/internal/log/{userId}/query` | 按用户查审计列表 | TopBiz | `GET /api/v1/log` | done |
 
 查询参数：`page`、`size`、`operation`（可选）、`start_time`、`end_time`。
 
@@ -413,35 +426,72 @@ TopBiz 鉴权后转发；User 服务不对外。
 
 | 方法 | 路径 | 说明 | 调用方 | 对外代理 | 规格状态 |
 |------|------|------|--------|----------|----------|
-| GET | `/internal/log/ops/query` | 原始访问日志检索 | TopBiz | `GET /api/v1/log/ops/query` | planned |
+| GET | `/internal/log/ops/query` | 原始访问日志检索（Query 参数） | TopBiz | `GET /api/v1/log/ops/query` | done |
+| POST | `/internal/log/ops/query` | 原始访问日志检索（JSON 复杂条件） | TopBiz | `POST /api/v1/log/ops/query` | done |
 
-查询参数（与 logservice §1.1 对齐）：
+**时间范围**（优先级：`start_time`/`end_time` > `time_range` > 默认 **24h**）：
 
 | 参数 | 说明 |
 |------|------|
-| service_name | `topbiz` / `user` / `message` / `log` |
-| level | 日志级别（若采集） |
-| start_time / end_time | 时间范围 |
-| trace_id | 链路 ID |
-| keyword | 全文/关键字 |
-| page / size | 分页 |
+| `start_time` / `end_time` | 毫秒时间戳或 ISO-8601 |
+| `time_range` | `1h` / `24h` / `7d` / `30d` |
+
+**筛选参数**（GET 与 POST `filters` 内字段相同）：
+
+| 参数 | 说明 |
+|------|------|
+| `service_name` / `service_names` | 单值或列表 |
+| `trace_id` / `trace_ids` | 链路 ID |
+| `api` / `uri_prefix` | uri 前缀 |
+| `uri` / `uris` | 精确 uri |
+| `method` / `methods` | HTTP 方法 |
+| `level` / `levels` | 日志级别 |
+| `client_ip` / `client_ips` | 客户端 IP |
+| `http_status` / `http_status_min` / `http_status_max` | 状态码 |
+| `biz_code` / `biz_codes` | 业务 code |
+| `cost_ms_min` / `cost_ms_max` | 耗时范围 |
+| `slow_only` | `true` 时仅慢请求（阈值见 ADR §6.2） |
+| `has_error` | `true` 时仅错误请求 |
+| `keyword` | uri / req_params / res_body 模糊匹配 |
+| `sort_by` | `timestamp` / `cost_ms` / `http_status` |
+| `sort_order` | `asc` / `desc` |
+| `page` / `size` | 分页 |
+
+**POST 请求体示例**：
+
+```json
+{
+  "time_range": "7d",
+  "filters": {
+    "service_names": ["log"],
+    "has_error": true,
+    "api": "/internal/log"
+  },
+  "sort": { "field": "cost_ms", "order": "desc" },
+  "page": 1,
+  "size": 20
+}
+```
 
 ### 5.4 日志指标（logservice §1.2、§3）
 
 | 方法 | 路径 | 说明 | 调用方 | 对外代理 | 规格状态 |
 |------|------|------|--------|----------|----------|
-| GET | `/internal/log/metrics` | 查询时 ClickHouse 聚合（§3.7） | TopBiz | `GET /api/v1/log/metrics` | planned |
+| GET | `/internal/log/metrics` | 查询时 ClickHouse 聚合（§3.7） | TopBiz | `GET /api/v1/log/metrics` | done |
 
 查询参数：
 
 | 参数 | 说明 |
 |------|------|
+| `source` | `raw`（默认，查 `access_log`）\| `aggregate`（查 `metrics_aggregate`，长区间推荐） |
 | `service_name` | 可选 |
 | `api` | 可选，uri 前缀 |
-| `start_time` / `end_time` | 时间范围 |
+| `start_time` / `end_time` / `time_range` | 时间范围（规则同 §5.3） |
 | `metric` | 见下表 |
-| `top_n` | 排行类指标 |
+| `top_n` | 排行类指标（仅 `source=raw`） |
 | `interval` | QPS 时间桶（秒） |
+
+`source=aggregate` 支持的 `metric`：`pv`、`qps`、`api_calls`、`error_rate`、`p95`、`p99`、`success_rate`。排行类（`slowest_api`、`ip_*`）请使用 `source=raw`。
 
 **`metric` 枚举**（与 logservice §3 对齐；**MVP 可先实现** `qps`、`pv`、`error_rate`、`p95`、`p99`、`avg`、`success_rate`）：
 
@@ -459,8 +509,8 @@ TopBiz 鉴权后转发；User 服务不对外。
 
 | 方法 | 路径 | 说明 | 对外代理 | 规格状态 |
 |------|------|------|----------|----------|
-| GET | `/internal/log/metrics/config` | 读取告警阈值（error_rate、p99、success_rate 等） | `GET /api/v1/log/metrics/config` | planned |
-| PUT | `/internal/log/metrics/config` | 更新阈值 | `PUT /api/v1/log/metrics/config` | planned |
+| GET | `/internal/log/metrics/config` | 读取告警阈值（error_rate、p99、success_rate 等） | `GET /api/v1/log/metrics/config` | done |
+| PUT | `/internal/log/metrics/config` | 更新阈值 | `PUT /api/v1/log/metrics/config` | done |
 
 > 供 §2.4 WebSocket 告警判定使用；MVP 可不实现。
 
@@ -468,7 +518,7 @@ TopBiz 鉴权后转发；User 服务不对外。
 
 | 方法 | 路径 | 说明 | 调用方 | 对外代理 | 规格状态 |
 |------|------|------|--------|----------|----------|
-| POST | `/internal/log/ops/export` | 导出 CSV / JSON / TXT | TopBiz | `POST /api/v1/log/ops/export` | planned |
+| POST | `/internal/log/ops/export` | 导出 CSV / JSON / TXT | TopBiz | `POST /api/v1/log/ops/export` | done |
 
 请求体：`format`（`csv`|`json`|`txt`）、与 `ops/query` 相同的筛选条件。
 
@@ -476,11 +526,11 @@ TopBiz 鉴权后转发；User 服务不对外。
 
 | 组件 | 说明 | MVP |
 |------|------|-----|
-| **Vector** | 采集 `logs/access/*.json` → ClickHouse（**不用 Filebeat**，§5.4） | 是 |
+| **Vector** | 采集访问 JSONL → ClickHouse（IDE：`shared-logs/access/*/*.jsonl`；Docker：`logs/access/*/*.jsonl`；Vector 读 `/var/log/access/*/*.jsonl`；**不用 Filebeat**，§5.4） | 是 |
 | ClickHouse | `access_log` 明细；TTL 90 天（§2.1） | 是 |
 | 本地 JSON 清理 | 微服务日志框架按时间/容量删旧文件（§2.1） | 是 |
 | 异步采集入库 | Vector：Tail + 批量/超时刷新（§2.2） | 是 |
-| 定时预聚合 | 每 5 分钟写 `metrics_aggregate`（§2.3） | 选修 |
+| 定时预聚合 | 每 5 分钟写 `metrics_aggregate`（§2.3）；`MetricsAggregateScheduler` | 是 |
 | WebSocket 监控 | 周期推送 + 阈值告警（§2.4） | 选修 |
 
 ---
@@ -512,8 +562,8 @@ TopBiz 鉴权后转发；User 服务不对外。
 | 四服务 | `TraceIdFilter` + `AccessLogInterceptor` | `service_name`；脱敏；`body-on-error-only` 见 [ADR.md](../ADR.md) §6.2 |
 | 四服务 | 慢请求 | `cost_ms`>3000 → WARN 应用日志 |
 | common | `GlobalExceptionHandler` | 建议扩展 `error_type`：BIZ/SYS/RPC/DB/AUTH（§5.1） |
-| 各服务 | `logs/access/` | Vector tail 目录 |
-| topbiz | OpenFeign | 出站 `X-Trace-Id` |
+| 各服务 | `shared-logs/access/`（IDE）或 `logs/access/`（Docker） | Vector tail 目录（local compose 挂载前者到 `/var/log/access`） |
+| topbiz | HTTP Interface + WebClient | 出站 `X-Trace-Id` |
 | topbiz | 编排成功后 | `POST /internal/log/record`（仅审计，非每次 HTTP） |
 
 ### 6.4 凭证字段：必做场景与 `user_auth` 映射
@@ -536,12 +586,12 @@ TopBiz 将对外字段转换为 `user-service` 的 `user` + `user_auth`；验证
 
 | 服务 | 方法 | 路径 | 状态 | 备注 |
 |------|------|------|------|------|
-| topbiz | POST | `/api/v1/register`、`/login/*` | partial | JSON + Feign + Shiro(Redis) |
+| topbiz | POST | `/api/v1/register`、`/login/*` | partial | JSON + HTTP Interface + Shiro + Spring Session Redis |
 | user-service | `user` + `user_auth` | partial | BCrypt；6 场景 API |
 | message-service | carriers、instant、verify | partial | Redis 验证码；腾讯云/SMTP 可配置 |
-| log-service | record、ops/query、metrics | partial | MySQL 审计 + CH 查询 |
-| 四服务 | AccessLogInterceptor | partial | JSON → `logs/access`；配合 Vector |
-| 基础设施 | docker-compose | 已提供 | MySQL/Redis/CH/Vector，见仓库根目录 |
+| log-service | record、ops/query（GET/POST）、metrics（raw/aggregate）、export、metrics/config、预聚合 Scheduler | done | MySQL 审计 + ClickHouse 查询/聚合 |
+| 四服务 | AccessLogInterceptor | done | JSONL → `shared-logs/access/{service}/`（IDE）或 `logs/access/{service}/`（Docker）；配合 Vector |
+| 基础设施 | docker-compose + SQL | 已提供 | MySQL/Redis/CH/Vector；见 `docs/sql/`、`infra/` |
 
 其余接口均为 **planned**。详见 [GAPS.md](./GAPS.md)。
 

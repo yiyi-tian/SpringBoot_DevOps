@@ -47,4 +47,5 @@ Thumbs.db
 
 # Logs
 logs/
+shared-logs/**/*.jsonl
 *.log

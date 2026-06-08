@@ -1,45 +1,41 @@
 package org.example.topbiz.config;
 
-import org.apache.shiro.mgt.SecurityManager;
-import org.apache.shiro.spring.web.ShiroFilterFactoryBean;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.apache.shiro.authc.Authenticator;
+import org.apache.shiro.authc.pam.ModularRealmAuthenticator;
+import org.apache.shiro.authz.Authorizer;
+import org.apache.shiro.authz.ModularRealmAuthorizer;
+import org.apache.shiro.spring.web.config.DefaultShiroFilterChainDefinition;
+import org.apache.shiro.spring.web.config.ShiroFilterChainDefinition;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.Collections;
 
 @Configuration
 public class ShiroConfig {
 
-    @Autowired
-    private SecurityManager securityManager;
-
-    @Autowired
-    private ShiroRealm shiroRealm;
+    @Bean
+    public Authorizer authorizer(ShiroRealm shiroRealm) {
+        ModularRealmAuthorizer authorizer = new ModularRealmAuthorizer();
+        authorizer.setRealms(Collections.singletonList(shiroRealm));
+        return authorizer;
+    }
 
     @Bean
-    public ShiroFilterFactoryBean shiroFilterFactoryBean() {
-        org.apache.shiro.mgt.DefaultSecurityManager sm =
-                (org.apache.shiro.mgt.DefaultSecurityManager) securityManager;
-        sm.setRealm(shiroRealm);
+    public Authenticator authenticator(ShiroRealm shiroRealm) {
+        ModularRealmAuthenticator authenticator = new ModularRealmAuthenticator();
+        authenticator.setRealms(Collections.singletonList(shiroRealm));
+        return authenticator;
+    }
 
-        ShiroFilterFactoryBean filterBean = new ShiroFilterFactoryBean();
-        filterBean.setSecurityManager(securityManager);
-
-        Map<String, String> filterMap = new LinkedHashMap<>();
-
-        // 公开接口
-        filterMap.put("/api/v1/register/**", "anon");
-        filterMap.put("/api/v1/login/**", "anon");
-
-        // 管理员接口需要 admin 角色
-        filterMap.put("/api/v1/admin/**", "roles[admin]");
-
-        // 其他接口需要登录
-        filterMap.put("/api/v1/**", "authc");
-
-        filterBean.setFilterChainDefinitionMap(filterMap);
-        return filterBean;
+    @Bean
+    public ShiroFilterChainDefinition shiroFilterChainDefinition() {
+        DefaultShiroFilterChainDefinition chain = new DefaultShiroFilterChainDefinition();
+        chain.addPathDefinition("/api/v1/register/**", "anon");
+        chain.addPathDefinition("/api/v1/login/**", "anon");
+        chain.addPathDefinition("/api/v1/admin/**", "roles[admin]");
+        chain.addPathDefinition("/api/v1/log/**", "roles[admin]");
+        chain.addPathDefinition("/api/v1/**", "authc");
+        return chain;
     }
 }

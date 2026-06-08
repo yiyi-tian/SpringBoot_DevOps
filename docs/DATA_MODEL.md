@@ -272,9 +272,9 @@ message-service 不查询 user 表；TopBiz 调用前校验 userId / 填 receive
 
 查询：`GET /internal/log/ops/query`；指标：`GET /internal/log/metrics`（查询时聚合，§3.7）。
 
-### 4.4 `metrics_aggregate`（选修，logservice §2.3）
+### 4.4 `metrics_aggregate`（logservice §2.3）
 
-定时任务（如每 5 分钟）从 `access_log` 预计算写入，供大屏/即时查询。
+由 log-service **`MetricsAggregateScheduler`**（`@Scheduled`，默认每 5 分钟）从 `access_log` 预计算写入；建表 SQL：[docs/sql/05_clickhouse_metrics_aggregate.sql](sql/05_clickhouse_metrics_aggregate.sql)。启动时可选补跑最近 12 个窗口（`devops.metrics.aggregate.backfill-windows`）。
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -287,7 +287,9 @@ message-service 不查询 user 表；TopBiz 调用前校验 userId / 填 receive
 | p95 | UInt32 | |
 | p99 | UInt32 | |
 | success_rate | Float64 | |
-| ip_risk_score | Float64 NULL | 安全 §2.3 |
+| ip_risk_score | Float64 NULL | 安全 §2.3（当前写 NULL） |
+
+指标查询：`GET /internal/log/metrics?source=aggregate`（长区间）；明细检索仍用 `access_log` + `ops/query`。
 
 ### 4.5 `metrics_threshold_config`（选修，logservice §1.3）
 
@@ -346,7 +348,7 @@ message-service 不查询 user 表；TopBiz 调用前校验 userId / 填 receive
 | 运维/访问日志检索 | access_log（ClickHouse） | `GET /api/v1/log/ops/query` |
 | 日志指标 | access_log 查询时聚合 | `GET /api/v1/log/metrics` |
 | 指标阈值配置（选修） | metrics_threshold_config | `GET/PUT /api/v1/log/metrics/config` |
-| 预聚合指标（选修） | metrics_aggregate | 无对外 REST；§2.3 自驱 |
+| 预聚合指标 | metrics_aggregate | `GET /internal/log/metrics?source=aggregate`；§2.3 Scheduler |
 | WebSocket 监控（选修） | metrics_aggregate + config | logservice §2.4 |
 | 模板/变量/载体 | msg_* | `/api/v1/templates`、`variables`、`msg/carriers` |
 | 发送/记录 | msg_task、msg_message | `/api/v1/send/*`、`sending-records` |

@@ -6,7 +6,7 @@
     <parent>
         <groupId>org.example</groupId>
         <artifactId>SpringBoot_DevOps</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <version>0.2.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>topbiz</artifactId>
@@ -15,6 +15,7 @@
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <shiro.version>2.0.2</shiro.version>
     </properties>
 
     <dependencies>
@@ -35,25 +36,81 @@
             <artifactId>spring-boot-starter-webflux</artifactId>
         </dependency>
 
-        <!-- Shiro -->
+        <!-- Shiro 2.x：starter 的 jakarta classifier 仍会拉 javax 传递依赖，需显式替换 -->
         <dependency>
             <groupId>org.apache.shiro</groupId>
             <artifactId>shiro-spring-boot-web-starter</artifactId>
-            <version>1.13.0</version>
+            <version>${shiro.version}</version>
+            <classifier>jakarta</classifier>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.shiro</groupId>
+                    <artifactId>shiro-spring-boot-starter</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.shiro</groupId>
+            <artifactId>shiro-spring-boot-starter</artifactId>
+            <version>${shiro.version}</version>
+            <classifier>jakarta</classifier>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.shiro</groupId>
+                    <artifactId>shiro-spring</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.shiro</groupId>
+            <artifactId>shiro-spring</artifactId>
+            <version>${shiro.version}</version>
+            <classifier>jakarta</classifier>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.shiro</groupId>
+                    <artifactId>shiro-web</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.apache.shiro</groupId>
+                    <artifactId>shiro-core</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.shiro</groupId>
+            <artifactId>shiro-web</artifactId>
+            <version>${shiro.version}</version>
+            <classifier>jakarta</classifier>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.shiro</groupId>
+                    <artifactId>shiro-core</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.shiro</groupId>
+            <artifactId>shiro-core</artifactId>
+            <version>${shiro.version}</version>
+            <classifier>jakarta</classifier>
         </dependency>
 
-        <!-- Shiro Redis -->
+        <!-- HttpSession 由 Spring Session Data Redis 持久化（Shiro 仍用 ServletContainerSessionManager） -->
         <dependency>
-            <groupId>org.crazycake</groupId>
-            <artifactId>shiro-redis-spring-boot-starter</artifactId>
-            <version>3.3.1</version>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
         </dependency>
 
         <!-- 引用 common 模块 -->
         <dependency>
             <groupId>org.example</groupId>
             <artifactId>common</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
+            <version>0.2.0-SNAPSHOT</version>
         </dependency>
     </dependencies>
 </project>

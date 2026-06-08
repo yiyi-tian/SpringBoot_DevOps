@@ -30,6 +30,11 @@ public class LogController {
         return Result.ok(logService.queryOpsLogs(params));
     }
 
+    @PostMapping("/log/ops/query")
+    public Result<Map<String, Object>> queryOpsLogsPost(@RequestBody Map<String, Object> request) {
+        return Result.ok(logService.queryOpsLogsPost(request));
+    }
+
     @GetMapping("/log/metrics")
     public Result<Map<String, Object>> queryMetrics(@RequestParam Map<String, Object> params) {
         return Result.ok(logService.queryMetrics(params));

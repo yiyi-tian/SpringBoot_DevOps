@@ -29,7 +29,7 @@ public class AuthController {
         }
 
         Map<String, Object> result = authService.register(credential, password, code);
-        return Result.ok(result);
+        return fromServiceResult(result);
     }
 
     @PostMapping("/api/v1/register/email_code")
@@ -68,7 +68,7 @@ public class AuthController {
         }
 
         Map<String, Object> result = authService.login(credential, password, code);
-        return Result.ok(result);
+        return fromServiceResult(result);
     }
 
     @PostMapping("/api/v1/login/email_code")
@@ -89,5 +89,27 @@ public class AuthController {
         }
         authService.sendLoginPhoneCode(phone);
         return Result.ok();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Result<Map<String, Object>> fromServiceResult(Map<String, Object> result) {
+        if (result == null) {
+            return Result.error(502, "内部服务无响应");
+        }
+        Object codeObj = result.get("code");
+        if (codeObj == null) {
+            return Result.error(502, "内部服务响应格式异常");
+        }
+        int code = codeObj instanceof Number
+                ? ((Number) codeObj).intValue()
+                : Integer.parseInt(String.valueOf(codeObj));
+        if (code != 0) {
+            String message = result.get("message") != null
+                    ? String.valueOf(result.get("message"))
+                    : "操作失败";
+            return Result.error(code, message);
+        }
+        Map<String, Object> data = (Map<String, Object>) result.get("data");
+        return Result.ok(data);
     }
 }

@@ -1,13 +1,12 @@
 # 技术决策记录（ADR）
 
-> 开发前定稿。业务接口见 [API.md](openapi/API.md)、[DATA_MODEL.md](openapi/DATA_MODEL.md)。  
+> 开发前定稿。业务接口见 [API.md](API.md)、[DATA_MODEL.md](DATA_MODEL.md)。  
 > **日志域以 [logservice.md](../logservice.md) 为需求原文**；本节为可执行决策摘要。
 
 | 文档 | 范围 |
 |------|------|
-| [API.md §1.6、§5](openapi/API.md) | 对外/内部 REST |
-| [DATA_MODEL.md §4](openapi/DATA_MODEL.md) | `access_log`、`audit_log`、选修聚合表 |
-| [GAPS.md §3](openapi/GAPS.md) | 文档 vs 实现缺口 |
+| [API.md §1.6、§5](API.md) | 对外/内部 REST |
+| [DATA_MODEL.md §4](DATA_MODEL.md) | `access_log`、`audit_log`、选修聚合表 |
 
 ## 1. HTTP 与响应协议
 
@@ -22,7 +21,7 @@
 | 决策 | 内容 |
 |------|------|
 | 会话 | **Apache Shiro**（仅 TopBiz），Cookie `JSESSIONID`；**不用 JWT** |
-| Session 存储 | **Redis**（`shiro:session:*`），支持多实例 TopBiz |
+| Session 存储 | **Redis**（Spring Session Data Redis，namespace `shiro:session`，检索 `shiro:session:*`），支持多实例 TopBiz；**本地 dev 连云端 Redis**，见各服务 `application-dev.yml` |
 | 密码 | **BCrypt**（`spring-security-crypto`）；禁止新数据使用 MD5 |
 | 内部服务 8081–8083 | 课程阶段信任本机网络；生产需 mTLS 或内网 Token（文档约定，暂不实现） |
 
@@ -51,7 +50,7 @@
 | 手机验证码 | `verify:phone:{scene}:{phone}` | 300s |
 | 发送限流 | `verify:rate:{target}` | 60s 内最多 1 次 |
 | 载体缓存 | `carrier:config:{carrierId}` | 3600s |
-| Shiro Session | `shiro:session:{sessionId}` | 与 session 超时一致（默认 30min） |
+| Shiro Session | `shiro:session:sessions:{sessionId}`（及 `shiro:session:sessions:expires:*`、`shiro:session:expirations:*` 辅助 key；检索 `shiro:session:*`） | 与 session 超时一致（默认 30min） |
 
 `scene`：`REGISTER` | `LOGIN`。
 
@@ -99,7 +98,7 @@
 
 | 能力 | MVP | 实现落点 |
 |------|-----|----------|
-| 链路 `X-Trace-Id` + MDC | 必做 | `common`：`TraceIdFilter`、Feign 透传 |
+| 链路 `X-Trace-Id` + MDC | 必做 | `common`：`TraceIdFilter`、HTTP Interface（WebClient）透传 |
 | 访问日志 | 必做 | `common`：`AccessLogInterceptor` |
 | 业务审计 | 必做 | TopBiz → `POST /internal/log/record` |
 | 数据脱敏 | 必做 | 拦截器 mask + 审计 `detail`（手机/邮箱/密码/token） |
@@ -111,6 +110,7 @@
 | 项 | 决策 |
 |----|------|
 | 采集工具 | **Vector**（**不用 Filebeat**；见 `infra/vector/vector.toml`） |
+| 源目录 | IDE：`shared-logs/access/{serviceName}/`；Docker：`logs/access/{serviceName}/`；local compose 将 `shared-logs/access` 挂载为 Vector 的 `/var/log/access` |
 | 触发 | Tail 文件事件；批量/超时刷新（§2.2） |
 | 本地清理 | 日志框架按保留时长/体积删除旧 JSON（§2.1） |
 | ClickHouse | 表 TTL **90 天**（`docs/sql/04_clickhouse_access_log.sql`） |
@@ -121,9 +121,10 @@
 
 | 能力 | 路径 | logservice |
 |------|------|------------|
-| 原始日志检索 | `GET /internal/log/ops/query` | §1.1 |
-| 指标查询 | `GET /internal/log/metrics` | §1.2 |
+| 原始日志检索 | `GET/POST /internal/log/ops/query` | §1.1 |
+| 指标查询 | `GET /internal/log/metrics`（`source=raw\|aggregate`） | §1.2 |
 | 日志导出 | `POST /internal/log/ops/export` | §1.4 |
+| 定时预聚合 | `metrics_aggregate` + `@Scheduled` | §2.3 |
 
 **`metric` 参数（与 §3 对齐，MVP 可先实现子集）**：
 
@@ -142,7 +143,6 @@
 | 能力 | logservice | 说明 |
 |------|------------|------|
 | 指标阈值配置 | §1.3 | `GET/PUT /internal/log/metrics/config` |
-| 定时预聚合 | §2.3 | `metrics_aggregate` 表 + `@Scheduled` |
 | WebSocket 监控推送 | §2.4 | 周期同步 + 阈值告警推前端 |
 
 ### 6.6 审计与访问日志勿混用
@@ -154,7 +154,7 @@
 
 | 类别 | 选型 |
 |------|------|
-| BFF 出站 | **OpenFeign** + `X-Trace-Id` 拦截器 |
+| BFF 出站 | **Spring HTTP Interface** + **WebClient** + `X-Trace-Id` 过滤器 |
 | DB 迁移 | **Flyway**（各服务 `db/migration`） |
 | 服务发现 | `application.yml` 固定 URL（MVP） |
 | 短信 | 腾讯云 SMS SDK |
@@ -164,6 +164,6 @@
 
 - `config_json` 全量 Jasypt 加密 → MVP 密钥放环境变量
 - springdoc-openapi 运行时文档 → 课后补
-- logservice §2.3 预聚合、§1.3 指标配置、§2.4 WebSocket → 二期
+- logservice §2.4 WebSocket 监控推送 → 二期
 - 审计写入 Kafka 主题（logservice 提及可选）→ 课程仍以 MySQL `audit_log` 为准
 - logservice §5.3 高级能力（动态 DEBUG、多语言 SDK）→ 远期

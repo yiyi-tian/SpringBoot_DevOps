@@ -1,0 +1,38 @@
+data_dir = "/var/lib/vector"
+
+[sources.access_files]
+type = "file"
+include = ["/var/log/access/*/*.jsonl"]
+read_from = "beginning"
+
+[transforms.access_parse]
+type = "remap"
+inputs = ["access_files"]
+source = '''
+parsed, err = parse_json(.message)
+if err != null {
+  abort
+}
+. = parsed
+del(.message)
+if exists(.timestamp) {
+  .timestamp = from_unix_timestamp!(to_int!(.timestamp), unit: "milliseconds")
+}
+'''
+
+[sinks.clickhouse_access]
+type = "clickhouse"
+inputs = ["access_parse"]
+endpoint = "http://clickhouse:8123"
+database = "devops"
+table = "access_log"
+compression = "gzip"
+date_time_best_effort = true
+
+[sinks.clickhouse_access.batch]
+max_events = 1000
+max_bytes = 10485760
+timeout_secs = 5
+
+[sinks.clickhouse_access.healthcheck]
+enabled = true

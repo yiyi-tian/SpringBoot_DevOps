@@ -1,0 +1,56 @@
+# 本地测试：仅 ClickHouse + Vector（MySQL 仍用云服务器，Java 服务用 mvn 本地跑）
+# 启动：docker compose -f docker-compose.local.yml up -d
+
+volumes:
+  clickhouse_data:
+  vector_data:
+
+networks:
+  devops:
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8
+    container_name: devops-clickhouse
+    networks: [devops]
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+  clickhouse-init:
+    image: clickhouse/clickhouse-server:23.8
+    container_name: devops-clickhouse-init
+    networks: [devops]
+    depends_on:
+      - clickhouse
+    volumes:
+      - ../docs/sql/04_clickhouse_access_log.sql:/init/04_clickhouse_access_log.sql:ro
+      - ../docs/sql/05_clickhouse_metrics_aggregate.sql:/init/05_clickhouse_metrics_aggregate.sql:ro
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        until clickhouse-client --host clickhouse --query "SELECT 1" >/dev/null 2>&1; do sleep 2; done
+        clickhouse-client --host clickhouse --multiquery < /init/04_clickhouse_access_log.sql
+        if [ $? -ne 0 ]; then echo "ClickHouse init 04 failed" >&2; exit 1; fi
+        clickhouse-client --host clickhouse --multiquery < /init/05_clickhouse_metrics_aggregate.sql
+        if [ $? -ne 0 ]; then echo "ClickHouse init 05 failed" >&2; exit 1; fi
+        echo "ClickHouse init done"
+
+  vector:
+    image: timberio/vector:0.35.0-alpine
+    container_name: devops-vector
+    networks: [devops]
+    depends_on:
+      - clickhouse
+    volumes:
+      - ../shared-logs/access:/var/log/access:ro
+      - vector_data:/var/lib/vector
+      - ./vector/vector.toml:/etc/vector/vector.toml:ro
+    command: ["--config", "/etc/vector/vector.toml"]
