@@ -1,12 +1,8 @@
 -- =====================================================
 -- user-service 数据库建表脚本
 -- 数据库：MySQL
--- 用法：mysql -u root -p < schema.sql
+-- 用法：mysql -u root -p < docs/sql/02_devops_user.sql
 -- =====================================================
-
-CREATE DATABASE IF NOT EXISTS devops_user
-    DEFAULT CHARACTER SET utf8mb4
-    COLLATE utf8mb4_unicode_ci;
 
 USE devops_user;
 

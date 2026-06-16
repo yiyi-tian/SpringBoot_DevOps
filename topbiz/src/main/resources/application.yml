@@ -1,31 +1,8 @@
-server:
-  port: 8080
-  servlet:
-    session:
-      timeout: 30m
-      cookie:
-        name: JSESSIONID
-
 spring:
-  profiles:
-    active: dev
   application:
     name: topbiz
-  session:
-    timeout: 30m
-    redis:
-      namespace: shiro:session
+  profiles:
+    active: dev
 
-shiro:
-  sessionManager:
-    sessionIdUrlRewritingEnabled: false
-
-devops:
-  access-log:
-    service-name: topbiz
-    output-dir: shared-logs/access
-    file-pattern: "access-{date}.jsonl"
-    log-body: true
-    body-on-error-only: true
-    max-body-length: 4096
-    slow-request-threshold-ms: 3000
+server:
+  port: 8080

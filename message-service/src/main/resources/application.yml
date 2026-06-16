@@ -1,12 +1,8 @@
+spring:
+  application:
+    name: message-service
+  profiles:
+    active: dev
+
 server:
   port: 8082
-
-devops:
-  access-log:
-    service-name: message
-    output-dir: shared-logs/access
-    file-pattern: "access-{date}.jsonl"
-    log-body: true
-    body-on-error-only: true
-    max-body-length: 4096
-    slow-request-threshold-ms: 3000

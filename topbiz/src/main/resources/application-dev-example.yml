@@ -1,10 +1,15 @@
-# 复制为 application-dev.yml 并填写云端 Redis 密码（application-dev.yml 已在 .gitignore）
+# ==========================================
+# 复制此文件为 application-dev.yml，修改为你的本地配置
+#   cp application-dev-example.yml application-dev.yml
+# application-dev.yml 已在 .gitignore 中，不会被提交
+# ==========================================
+
 spring:
   data:
     redis:
       host: your_redis_host
       port: 6379
-      password: your_redis_password
+      password: your_redis_password   #没有密码就删除这行
       database: 0
       timeout: 10000ms
       lettuce:
@@ -13,3 +18,17 @@ spring:
           max-idle: 8
           min-idle: 0
           max-wait: -1ms
+
+shiro:
+  sessionManager:
+    sessionIdUrlRewritingEnabled: false
+
+devops:
+  access-log:
+    service-name: topbiz
+    output-dir: shared-logs/access
+    file-pattern: "access-{date}.jsonl"
+    log-body: true
+    body-on-error-only: true
+    max-body-length: 4096
+    slow-request-threshold-ms: 3000

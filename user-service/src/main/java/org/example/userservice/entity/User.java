@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 public class User {
 
     @TableId(type = IdType.AUTO)
-    private Long id;
+    private Long userId;
 
     private String displayName;     // 显示名（默认用手机号/邮箱/用户名）
 
