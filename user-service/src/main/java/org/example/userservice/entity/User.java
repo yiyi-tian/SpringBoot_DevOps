@@ -15,6 +15,8 @@ public class User {
 
     private String displayName;     // 显示名（默认用手机号/邮箱/用户名）
 
+    private Integer sex;            // 性别（可选）
+
     private String status;          // ACTIVE / LOCKED / DEREGISTERED
 
     private Integer isDeleted;      // 逻辑删除 0/1

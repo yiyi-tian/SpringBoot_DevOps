@@ -23,5 +23,7 @@ public class UserAuth {
 
     private Integer verified;       // 是否已验证 0/1
 
+    private LocalDateTime expiredAt;    // 凭证过期时间
+
     private LocalDateTime createdAt;
 }

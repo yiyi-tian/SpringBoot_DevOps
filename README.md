@@ -227,3 +227,4 @@ KEY `idx_user_id` (`user_id`)
 ```sql
 
 ```
+/db_scripts: sql脚本程序目录
