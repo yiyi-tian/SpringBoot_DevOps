@@ -7,3 +7,4 @@
 {"method":"POST","uri":"/internal/log/record","timestamp":1782740207948,"level":"INFO","trace_id":"aaa8fda0-1299-426c-bf35-2df10763313c","service_name":"log","client_ip":"127.0.0.1","cost_ms":35,"http_status":200,"biz_code":"0"}
 {"method":"POST","uri":"/internal/log/record","timestamp":1782740652420,"level":"INFO","trace_id":"dde84758-8bee-4aae-a64c-73225d338544","service_name":"log","client_ip":"127.0.0.1","cost_ms":1133,"http_status":200,"biz_code":"0"}
 {"method":"POST","uri":"/internal/log/record","timestamp":1782740677815,"level":"INFO","trace_id":"4b40668d-fcf6-4e53-8d25-57d0b4b20b1f","service_name":"log","client_ip":"127.0.0.1","cost_ms":22,"http_status":200,"biz_code":"0"}
+{"method":"POST","uri":"/internal/log/record","timestamp":1782747524427,"level":"INFO","trace_id":"98acee9c-1833-4a29-ae85-50102509d716","service_name":"log","client_ip":"127.0.0.1","cost_ms":1237,"http_status":200,"biz_code":"0"}

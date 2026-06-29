@@ -9,3 +9,4 @@
 {"method":"POST","uri":"/internal/user/login","timestamp":1782740207883,"level":"INFO","trace_id":"aaa8fda0-1299-426c-bf35-2df10763313c","service_name":"user","client_ip":"127.0.0.1","cost_ms":270,"http_status":200,"biz_code":"0"}
 {"method":"POST","uri":"/internal/user/login","timestamp":1782740650940,"level":"INFO","trace_id":"dde84758-8bee-4aae-a64c-73225d338544","service_name":"user","client_ip":"127.0.0.1","cost_ms":1546,"http_status":200,"biz_code":"0"}
 {"method":"POST","uri":"/internal/user/login","timestamp":1782740677778,"level":"INFO","trace_id":"4b40668d-fcf6-4e53-8d25-57d0b4b20b1f","service_name":"user","client_ip":"127.0.0.1","cost_ms":295,"http_status":200,"biz_code":"0"}
+{"method":"POST","uri":"/internal/user/login","timestamp":1782747522729,"level":"INFO","trace_id":"98acee9c-1833-4a29-ae85-50102509d716","service_name":"user","client_ip":"127.0.0.1","cost_ms":1812,"http_status":200,"biz_code":"0"}

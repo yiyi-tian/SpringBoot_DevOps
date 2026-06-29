@@ -76,19 +76,24 @@ public class MessageController {
         return messageService.createVariable(request);
     }
 
+    @GetMapping("/internal/variables")
+    public Map<String, Object> queryVariables(@RequestParam Map<String, Object> params) {
+        return messageService.queryVariables(params);
+    }
+
     @GetMapping("/internal/variables/{variableId}")
     public Map<String, Object> getVariable(@PathVariable String variableId) {
-        return messageService.getVariable(variableId);
+        return messageService.getVariable(Long.valueOf(variableId));
     }
 
     @PutMapping("/internal/variables/{variableId}")
     public Map<String, Object> updateVariable(@PathVariable String variableId, @RequestBody Map<String, Object> request) {
-        return messageService.updateVariable(variableId, request);
+        return messageService.updateVariable(Long.valueOf(variableId), request);
     }
 
     @DeleteMapping("/internal/variables/{variableId}")
     public Map<String, Object> deleteVariable(@PathVariable String variableId) {
-        return messageService.deleteVariable(variableId);
+        return messageService.deleteVariable(Long.valueOf(variableId));
     }
 
     // ==================== 载体管理 ====================

@@ -48,6 +48,9 @@ public interface MessageServiceClient {
     @PostExchange("/variables")
     Map<String, Object> createVariable(@RequestBody Map<String, Object> request);
 
+    @GetExchange("/variables")
+    Map<String, Object> queryVariables(@RequestParam Map<String, Object> params);
+
     @GetExchange("/variables/{variableId}")
     Map<String, Object> getVariable(@PathVariable String variableId);
 

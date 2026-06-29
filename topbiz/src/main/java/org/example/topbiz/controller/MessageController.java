@@ -65,6 +65,11 @@ public class MessageController {
     public Result<Map<String, Object>> createVariable(@RequestBody Map<String, Object> request) {
         return Result.ok(messageService.createVariable(request));
     }
+    @GetMapping("/variables")
+    public Result<Map<String, Object>> queryVariables(@RequestParam Map<String, Object> params) {
+        return Result.ok(messageService.queryVariables(params));
+    }
+
     @GetMapping("/variables/{variableId}")
     public Result<Map<String, Object>> getVariable(@PathVariable String variableId) {
         return Result.ok(messageService.getVariable(variableId));

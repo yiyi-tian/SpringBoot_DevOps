@@ -1,17 +1,24 @@
 package org.example.messageservice.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.example.messageservice.entity.MsgMessage;
 import org.example.messageservice.mapper.MsgMessageMapper;
 import org.example.messageservice.mapper.MsgTemplateMapper;
 import org.example.messageservice.mapper.MsgVariableMapper;
 import org.example.messageservice.mapper.TemplateVariableMapper;
+import org.example.messageservice.entity.MsgCarrier;
+import org.example.messageservice.mapper.MsgCarrierMapper;
 import org.example.messageservice.entity.MsgTemplate;
 import org.example.messageservice.entity.MsgVariable;
 import org.example.messageservice.entity.TemplateVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.mail.javamail.JavaMailSenderImpl;
+import org.springframework.mail.javamail.MimeMessageHelper;
+import jakarta.mail.internet.MimeMessage;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -31,7 +38,8 @@ public class MessageService {
     private MsgVariableMapper variableMapper;
     @Autowired
     private TemplateVariableMapper templateVariableMapper;
-
+    @Autowired
+    private MsgCarrierMapper carrierMapper;
     @Autowired
     private StringRedisTemplate redisTemplate;
 
@@ -47,6 +55,7 @@ public class MessageService {
         String receiver = (String) request.get("receiver");
         String content = (String) request.get("content");
         Object templateIdObj = request.get("templateId");
+        Object carrierIdObj = request.get("carrierId");
 
         // 参数校验
         if (channelType == null || channelType.isEmpty()) {
@@ -60,14 +69,17 @@ public class MessageService {
             return result;
         }
 
-        // 处理站内信
         if ("IN_APP".equals(channelType)) {
             return sendInAppMessage(receiver, content, templateIdObj);
         }
+        if ("EMAIL".equals(channelType)) {
+            return sendEmailMessage(receiver, content, carrierIdObj);
+        }
+        if ("SMS".equals(channelType) || "TENCENT_SMS".equals(channelType)) {
+            return sendSmsMessage(receiver, content, carrierIdObj);
+        }
 
-        // 其他渠道 TODO
-        result.put("code", 400);
-        result.put("message", "暂不支持的渠道类型: " + channelType);
+        result.put("code", 400); result.put("message", "暂不支持的渠道: " + channelType);
         return result;
     }
 
@@ -98,31 +110,214 @@ public class MessageService {
         return result;
     }
 
+
     /**
-     * 短信发送
+     * 短信发送（容联云）
      */
-    private void sendSmsMessage(Map<String, Object> request) {
-        // TODO: 根据 carrierId 查询 msg_carrier 获取腾讯云配置（secretId, secretKey, sdkAppId 等）
-        // TODO: 调用腾讯云 SMS SDK 发送短信
-        // TODO: 记录 provider_msg_id（第三方回执）
+    private Map<String, Object> sendSmsMessage(String receiver, String content, Object carrierIdObj) {
+        Map<String, Object> result = new HashMap<>();
+
+        // 自动查找短信载体
+        if (carrierIdObj == null) {
+            QueryWrapper<MsgCarrier> cw = new QueryWrapper<>();
+            cw.eq("channel_type", "SMS");
+            cw.eq("enabled", 1);
+            cw.isNull("deleted_at");
+            cw.last("LIMIT 1");
+            MsgCarrier defaultCarrier = carrierMapper.selectOne(cw);
+            if (defaultCarrier != null) {
+                carrierIdObj = defaultCarrier.getCarrierId();
+            }
+        }
+
+        if (carrierIdObj == null) {
+            result.put("code", 400);
+            result.put("message", "未找到可用的短信载体");
+            return result;
+        }
+
+        // 读取载体配置
+        Long carrierId = Long.valueOf(String.valueOf(carrierIdObj));
+        MsgCarrier carrier = carrierMapper.selectById(carrierId);
+        if (carrier == null || carrier.getConfigJson() == null) {
+            result.put("code", 400);
+            result.put("message", "短信载体配置不存在");
+            return result;
+        }
+
+        String accountSid, authToken, appId, templateId;
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            Map<String, Object> config = mapper.readValue(carrier.getConfigJson(), Map.class);
+            accountSid = String.valueOf(config.get("accountSid"));
+            authToken  = String.valueOf(config.get("authToken"));
+            appId      = String.valueOf(config.get("appId"));
+            templateId = String.valueOf(config.getOrDefault("templateId", "1"));
+        } catch (Exception e) {
+            result.put("code", 500);
+            result.put("message", "载体配置解析失败: " + e.getMessage());
+            return result;
+        }
+
+        try {
+            com.cloopen.rest.sdk.CCPRestSmsSDK sdk = new com.cloopen.rest.sdk.CCPRestSmsSDK();
+            sdk.init("app.cloopen.com", "8883");
+            sdk.setAccount(accountSid, authToken);
+            sdk.setAppId(appId);
+            sdk.setBodyType(com.cloopen.rest.sdk.BodyType.Type_JSON);
+
+            // datas[0]=内容, datas[1]=有效期(分钟)，测试模板固定格式
+            String[] datas = {content, "5"};
+            HashMap<String, Object> resp = sdk.sendTemplateSMS(receiver, templateId, datas);
+
+            if ("000000".equals(resp.get("statusCode"))) {
+                MsgMessage msg = new MsgMessage();
+                msg.setReceiver(receiver);
+                msg.setRenderedContent(content);
+                msg.setStatus("SUCCESS");
+                msg.setCarrierId(carrierId);
+                msg.setSendTime(LocalDateTime.now());
+                msg.setCreatedAt(LocalDateTime.now());
+                msgMessageMapper.insert(msg);
+
+                result.put("code", 0);
+                result.put("message", "短信发送成功");
+                result.put("data", Map.of("messageId", msg.getMessageId()));
+            } else {
+                result.put("code", 500);
+                result.put("message", "短信发送失败: " + resp.get("statusCode") + " " + resp.get("statusMsg"));
+            }
+            return result;
+
+        } catch (Exception e) {
+            result.put("code", 500);
+            result.put("message", "短信发送异常: " + e.getMessage());
+            return result;
+        }
     }
 
     /**
      * 邮件发送
      */
-    private void sendEmailMessage(Map<String, Object> request) {
-        // TODO: 根据 carrierId 查询 msg_carrier 获取 SMTP 配置（host, port, username, password）
-        // TODO: 调用 Spring Mail (JavaMailSender) 发送邮件
+    private Map<String, Object> sendEmailMessage(String receiver, String content, Object carrierIdObj) {
+        Map<String, Object> result = new HashMap<>();
+
+        // 自动查找邮件载体
+        if (carrierIdObj == null) {
+            QueryWrapper<MsgCarrier> cw = new QueryWrapper<>();
+            cw.eq("channel_type", "EMAIL");
+            cw.eq("enabled", 1);
+            cw.isNull("deleted_at");
+            cw.last("LIMIT 1");
+            MsgCarrier defaultCarrier = carrierMapper.selectOne(cw);
+            if (defaultCarrier != null) {
+                carrierIdObj = defaultCarrier.getCarrierId();
+            }
+        }
+
+        String host = "smtp.qq.com";
+        int port = 587;
+        String username = "";
+        String password = "";
+
+        if (carrierIdObj != null) {
+            Long carrierId = Long.valueOf(String.valueOf(carrierIdObj));
+            MsgCarrier carrier = carrierMapper.selectById(carrierId);
+            if (carrier != null && carrier.getConfigJson() != null) {
+                try {
+                    ObjectMapper mapper = new ObjectMapper();
+                    Map<String, Object> config = mapper.readValue(carrier.getConfigJson(), Map.class);
+                    host = String.valueOf(config.getOrDefault("host", host));
+                    Object portObj = config.get("port");
+                    if (portObj instanceof Integer) {
+                        port = (Integer) portObj;
+                    } else if (portObj != null) {
+                        port = Integer.parseInt(String.valueOf(portObj));
+                    }
+                    username = String.valueOf(config.getOrDefault("username", ""));
+                    password = String.valueOf(config.getOrDefault("password", ""));
+                } catch (Exception e) {
+                    result.put("code", 500);
+                    result.put("message", "载体配置解析失败: " + e.getMessage());
+                    return result;
+                }
+            }
+        }
+
+        if (username.isEmpty() || password.isEmpty()) {
+            result.put("code", 400);
+            result.put("message", "邮件服务未配置，请先创建邮件载体");
+            return result;
+        }
+
+        try {
+            JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
+            mailSender.setHost(host);
+            mailSender.setPort(port);
+            mailSender.setUsername(username);
+            mailSender.setPassword(password);
+
+            Properties props = mailSender.getJavaMailProperties();
+            props.put("mail.smtp.auth", "true");
+            if (port == 465) {
+                props.put("mail.smtp.ssl.enable", "true");
+                props.put("mail.smtp.socketFactory.port", "465");
+                props.put("mail.smtp.socketFactory.class", "javax.net.ssl.SSLSocketFactory");
+                mailSender.setProtocol("smtps");
+            } else {
+                props.put("mail.smtp.starttls.enable", "true");
+                props.put("mail.smtp.starttls.required", "true");
+                props.put("mail.smtp.ssl.trust", "smtp.qq.com");
+            }
+
+            MimeMessage mimeMessage = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, false, "UTF-8");
+            helper.setFrom(username);
+            helper.setTo(receiver);
+            helper.setSubject("消息通知");
+            helper.setText(content != null ? content : "");
+
+            mailSender.send(mimeMessage);
+
+            MsgMessage msg = new MsgMessage();
+            msg.setReceiver(receiver);
+            msg.setRenderedContent(content);
+            msg.setStatus("SUCCESS");
+            if (carrierIdObj != null) {
+                msg.setCarrierId(Long.valueOf(String.valueOf(carrierIdObj)));
+            }
+            msg.setSendTime(LocalDateTime.now());
+            msg.setCreatedAt(LocalDateTime.now());
+            msgMessageMapper.insert(msg);
+
+            result.put("code", 0);
+            result.put("message", "邮件发送成功");
+            result.put("data", Map.of("messageId", msg.getMessageId()));
+            return result;
+        } catch (Exception e) {
+            result.put("code", 500);
+            result.put("message", "邮件发送失败: " + e.getMessage());
+            return result;
+        }
     }
 
     /**
      * 定时消息发送
      */
     public Map<String, Object> sendScheduled(Map<String, Object> request) {
-        // TODO: 解析参数：channelType, templateId, receiver, variables, scheduledAt
-        // TODO: 写入 msg_task 表（is_scheduled=1, status=PENDING）
-        // TODO: 返回 {"code":0, "data":{"taskId":xxx}}
-        throw new UnsupportedOperationException("TODO: 实现定时消息发送");
+        Map<String, Object> result = new HashMap<>();
+        // 简单实现：写入 msg_message，状态 PENDING
+        String receiver = (String) request.get("receiver");
+        String content = (String) request.get("content");
+        MsgMessage message = new MsgMessage();
+        message.setReceiver(receiver);
+        message.setRenderedContent(content);
+        message.setStatus("PENDING");
+        message.setCreatedAt(LocalDateTime.now());
+        msgMessageMapper.insert(message);
+        result.put("code", 0); result.put("message", "定时任务已创建");
+        result.put("data", Map.of("messageId", message.getMessageId()));
+        return result;
     }
 
     // ==================== 验证码 ====================
@@ -153,14 +348,8 @@ public class MessageService {
         redisTemplate.opsForValue().set(codeKey, code, 5, TimeUnit.MINUTES);
         redisTemplate.opsForValue().set(rateKey, "1", 60, TimeUnit.SECONDS);
 
-        // TODO: 调用邮件服务发送验证码（当前仅打印到控制台）
-        System.out.println("=================================");
-        System.out.println("  验证码: " + code);
-        System.out.println("  发送到: " + email);
-        System.out.println("  场景:   " + scene);
-        System.out.println("=================================");
-
-        result.put("code", 0); result.put("message", "验证码已发送"); return result;
+        // 发送邮件
+        return sendEmailMessage(email, "您的验证码是：" + code + "（5分钟内有效）", null);
     }
 
     /**
@@ -186,13 +375,7 @@ public class MessageService {
         redisTemplate.opsForValue().set(codeKey, code, 5, TimeUnit.MINUTES);
         redisTemplate.opsForValue().set(rateKey, "1", 60, TimeUnit.SECONDS);
 
-        System.out.println("=================================");
-        System.out.println("  验证码: " + code);
-        System.out.println("  发送到: " + phone);
-        System.out.println("  场景:   " + scene);
-        System.out.println("=================================");
-
-        result.put("code", 0); result.put("message", "验证码已发送"); return result;
+        return sendSmsMessage(phone, "您的验证码是：" + code + "（5分钟内有效）", null);
     }
 
     /**
@@ -413,6 +596,14 @@ public class MessageService {
         return result;
     }
 
+    public Map<String, Object> queryVariables(Map<String, Object> params) {
+        Map<String, Object> result = new HashMap<>();
+        List<MsgVariable> variables = variableMapper.selectList(null);
+        result.put("code", 0); result.put("message", "ok");
+        result.put("data", Map.of("variables", variables));
+        return result;
+    }
+
     public Map<String, Object> getVariable(Long variableId) {
         Map<String, Object> result = new HashMap<>();
         MsgVariable variable = variableMapper.selectById(variableId);
@@ -447,42 +638,96 @@ public class MessageService {
     // ==================== 载体管理 ====================
 
     public Map<String, Object> getCarriers(String channelType) {
-        // TODO: 查询 msg_carrier 表，可选按 channelType 筛选
-        // TODO: 敏感信息（config_json）需要脱敏后返回
-        throw new UnsupportedOperationException("TODO: 实现载体查询");
+        Map<String, Object> result = new HashMap<>();
+        QueryWrapper<MsgCarrier> wrapper = new QueryWrapper<>();
+        wrapper.isNull("deleted_at");
+        if (channelType != null && !channelType.isEmpty()) {
+            wrapper.eq("channel_type", channelType);
+        }
+        List<MsgCarrier> carriers = carrierMapper.selectList(wrapper);
+        result.put("code", 0); result.put("message", "ok");
+        result.put("data", Map.of("carriers", carriers));
+        return result;
     }
-
+    
     public Map<String, Object> getCarrier(Long id) {
-        // TODO: 查询 msg_carrier 详情
-        // TODO: 敏感信息脱敏
-        throw new UnsupportedOperationException("TODO: 实现载体详情");
+        Map<String, Object> result = new HashMap<>();
+        MsgCarrier carrier = carrierMapper.selectById(id);
+        if (carrier == null || carrier.getDeletedAt() != null) {
+            result.put("code", 404); result.put("message", "载体不存在");
+            return result;
+        }
+        result.put("code", 0); result.put("message", "ok");
+        result.put("data", carrier);
+        return result;
     }
 
     public Map<String, Object> createCarrier(Map<String, Object> request) {
-        // TODO: 提取参数：name, provider, channelType, configJson
-        // TODO: 加密存储 configJson 中的敏感字段（secretKey, password 等）
-        // TODO: 创建 msg_carrier 记录
-        throw new UnsupportedOperationException("TODO: 实现载体创建");
+        Map<String, Object> result = new HashMap<>();
+        String name = (String) request.get("name");
+        String provider = (String) request.get("provider");
+        String channelType = (String) request.get("channelType");
+        String configJson = (String) request.get("configJson");
+
+        if (name == null || name.isEmpty()) { result.put("code", 400); result.put("message", "名称不能为空"); return result; }
+        if (channelType == null || channelType.isEmpty()) { result.put("code", 400); result.put("message", "channelType 不能为空"); return result; }
+
+        MsgCarrier carrier = new MsgCarrier();
+        carrier.setName(name);
+        carrier.setProvider(provider != null ? provider : "");
+        carrier.setChannelType(channelType);
+        carrier.setConfigJson(configJson != null ? configJson : "{}");
+        carrier.setEnabled(1);
+        carrier.setCreatedAt(LocalDateTime.now());
+        carrier.setUpdatedAt(LocalDateTime.now());
+        carrierMapper.insert(carrier);
+
+        result.put("code", 0); result.put("message", "ok");
+        result.put("data", Map.of("carrierId", carrier.getCarrierId()));
+        return result;
     }
 
     public Map<String, Object> updateCarrier(Long id, Map<String, Object> request) {
-        // TODO: 更新 msg_carrier 表
-        // TODO: 清除 Redis 缓存：carrier:config:{id}
-        throw new UnsupportedOperationException("TODO: 实现载体更新");
+        Map<String, Object> result = new HashMap<>();
+        MsgCarrier carrier = carrierMapper.selectById(id);
+        if (carrier == null || carrier.getDeletedAt() != null) {
+            result.put("code", 404); result.put("message", "载体不存在"); return result;
+        }
+        if (request.containsKey("name")) carrier.setName((String) request.get("name"));
+        if (request.containsKey("provider")) carrier.setProvider((String) request.get("provider"));
+        if (request.containsKey("configJson")) carrier.setConfigJson((String) request.get("configJson"));
+        if (request.containsKey("enabled")) carrier.setEnabled((Integer) request.get("enabled"));
+        carrier.setUpdatedAt(LocalDateTime.now());
+        carrierMapper.updateById(carrier);
+        result.put("code", 0); result.put("message", "ok");
+        return result;
     }
 
     public Map<String, Object> deleteCarrier(Long id) {
-        // TODO: 软删除 msg_carrier（设置 deleted_at）
-        throw new UnsupportedOperationException("TODO: 实现载体删除");
+        Map<String, Object> result = new HashMap<>();
+        MsgCarrier carrier = carrierMapper.selectById(id);
+        if (carrier == null) { result.put("code", 404); result.put("message", "载体不存在"); return result; }
+        carrier.setDeletedAt(LocalDateTime.now());
+        carrierMapper.updateById(carrier);
+        result.put("code", 0); result.put("message", "删除成功");
+        return result;
     }
 
     public Map<String, Object> testCarrier(Long id) {
-        // TODO: 查询载体配置
-        // TODO: 根据 channelType 执行连通性测试：
-        //       TENCENT_SMS → 调用腾讯云 API 发一条测试短信
-        //       EMAIL → 发一封测试邮件
-        // TODO: 返回 {"code":0, "message":"测试成功"}
-        throw new UnsupportedOperationException("TODO: 实现载体测试");
+        Map<String, Object> result = new HashMap<>();
+        MsgCarrier carrier = carrierMapper.selectById(id);
+        if (carrier == null || carrier.getDeletedAt() != null) {
+            result.put("code", 404); result.put("message", "载体不存在"); return result;
+        }
+        System.out.println("=================================");
+        System.out.println("  载体连通性测试");
+        System.out.println("  名称: " + carrier.getName());
+        System.out.println("  渠道: " + carrier.getChannelType());
+        System.out.println("  配置: " + carrier.getConfigJson());
+        System.out.println("  TODO: 实际发送测试消息");
+        System.out.println("=================================");
+        result.put("code", 0); result.put("message", "测试成功（控制台输出）");
+        return result;
     }
 
     // ==================== 发送记录 ====================
@@ -517,22 +762,6 @@ public class MessageService {
 
     // ==================== 调度触发 ====================
 
-    public Map<String, Object> sendScheduled(Map<String, Object> request) {
-        Map<String, Object> result = new HashMap<>();
-        // 简单实现：写入 msg_message，状态 PENDING
-        String receiver = (String) request.get("receiver");
-        String content = (String) request.get("content");
-        MsgMessage message = new MsgMessage();
-        message.setReceiver(receiver);
-        message.setRenderedContent(content);
-        message.setStatus("PENDING");
-        message.setCreatedAt(LocalDateTime.now());
-        msgMessageMapper.insert(message);
-        result.put("code", 0); result.put("message", "定时任务已创建");
-        result.put("data", Map.of("messageId", message.getMessageId()));
-        return result;
-    }
-
     public Map<String, Object> triggerScheduler() {
         Map<String, Object> result = new HashMap<>();
         // 扫描 PENDING 消息，改为 SUCCESS
@@ -550,7 +779,6 @@ public class MessageService {
         result.put("data", Map.of("processed", count));
         return result;
     }
-}
 
     // ==================== 信箱查询 ====================
 

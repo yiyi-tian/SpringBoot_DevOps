@@ -22,7 +22,7 @@ public class MessageService {
      * 允许的渠道类型
      */
     private static final Set<String> VALID_CHANNEL_TYPES = new HashSet<>(Arrays.asList(
-            "IN_APP", "TENCENT_SMS", "EMAIL", "FEISHU", "WECHAT"
+            "IN_APP", "SMS", "EMAIL", "FEISHU", "WECHAT"
     ));
 
     // ==================== 消息发送 ====================
@@ -180,6 +180,10 @@ public class MessageService {
             throw new IllegalArgumentException("变量名不能为空");
         }
         return messageServiceClient.createVariable(request);
+    }
+
+    public Map<String, Object> queryVariables(Map<String, Object> params) {
+        return messageServiceClient.queryVariables(params);
     }
 
     public Map<String, Object> getVariable(String variableId) {
