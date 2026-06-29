@@ -1,5 +1,9 @@
 package org.example.messageservice.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import org.example.messageservice.entity.MsgMessage;
+import org.example.messageservice.mapper.MsgMessageMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -20,15 +24,10 @@ public class MessageService {
     public Map<String, Object> sendInstant(Map<String, Object> request) {
         Map<String, Object> result = new HashMap<>();
 
-        // 解析参数
         String channelType = (String) request.get("channelType");
-        Object templateIdObj = request.get("templateId");
-        Long templateId = null;
-        if (templateIdObj != null) {
-            templateId = Long.valueOf(String.valueOf(templateIdObj));
-        }
         String receiver = (String) request.get("receiver");
-        Map<String, Object> variables = (Map<String, Object>) request.get("variables");
+        String content = (String) request.get("content");
+        Object templateIdObj = request.get("templateId");
 
         // 参数校验
         if (channelType == null || channelType.isEmpty()) {
@@ -42,35 +41,42 @@ public class MessageService {
             return result;
         }
 
-        // 打印发送信息
-        System.out.println("=== 即时消息发送 ===");
-        System.out.println("  channelType: " + channelType);
-        System.out.println("  templateId: " + templateId);
-        System.out.println("  receiver: " + receiver);
-        System.out.println("  variables: " + variables);
-        System.out.println("  time: " + LocalDateTime.now());
+        // 处理站内信
+        if ("IN_APP".equals(channelType)) {
+            return sendInAppMessage(receiver, content, templateIdObj);
+        }
 
-        // TODO: 根据 channelType 分发：
-        //   IN_APP → 写入站内消息表
-        //   TENCENT_SMS → 调用腾讯云 SMS SDK
-        //   EMAIL → 调用 Spring Mail + SMTP
-
-        // TODO: 写入 msg_message 表
-
-        result.put("code", 0);
-        result.put("message", "ok");
-        Map<String, Object> data = new HashMap<>();
-        data.put("messageId", System.currentTimeMillis());
-        result.put("data", data);
+        // 其他渠道 TODO
+        result.put("code", 400);
+        result.put("message", "暂不支持的渠道类型: " + channelType);
         return result;
     }
 
     /**
      * 站内信发送
      */
-    private void sendInAppMessage(Map<String, Object> request) {
-        // TODO: 解析 receiver（userId），写入站内消息表
-        // TODO: 无需第三方调用
+    private Map<String, Object> sendInAppMessage(String receiver, String content, Object templateIdObj) {
+        Map<String, Object> result = new HashMap<>();
+
+        MsgMessage message = new MsgMessage();
+        message.setReceiver(receiver);
+        message.setRenderedContent(content != null ? content : "");
+        message.setStatus("SUCCESS");
+        message.setSendTime(LocalDateTime.now());
+        message.setCreatedAt(LocalDateTime.now());
+
+        if (templateIdObj != null) {
+            message.setTemplateId(Long.valueOf(String.valueOf(templateIdObj)));
+        }
+
+        msgMessageMapper.insert(message);
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("messageId", message.getMessageId());
+        result.put("code", 0);
+        result.put("message", "ok");
+        result.put("data", data);
+        return result;
     }
 
     /**
@@ -259,5 +265,41 @@ public class MessageService {
         // TODO: 更新 task 状态：SUCCESS / FAILED
         // TODO: 写入 msg_message 发送记录
         throw new UnsupportedOperationException("TODO: 实现调度触发");
+    }
+
+    // ==================== 信箱查询 ====================
+
+    public Map<String, Object> getInbox(Map<String, Object> params) {
+        Map<String, Object> result = new HashMap<>();
+
+        String receiver = (String) params.get("receiver");
+        Integer page = params.get("page") != null ? Integer.valueOf(String.valueOf(params.get("page"))) : 1;
+        Integer size = params.get("size") != null ? Integer.valueOf(String.valueOf(params.get("size"))) : 20;
+
+        if (receiver == null || receiver.isEmpty()) {
+            result.put("code", 400);
+            result.put("message", "receiver 不能为空");
+            return result;
+        }
+
+        QueryWrapper<MsgMessage> wrapper = new QueryWrapper<>();
+        wrapper.eq("receiver", receiver)
+               .orderByDesc("created_at");
+
+        // 分页
+        long total = msgMessageMapper.selectCount(wrapper);
+        wrapper.last("LIMIT " + ((page - 1) * size) + ", " + size);
+        List<MsgMessage> messages = msgMessageMapper.selectList(wrapper);
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("messages", messages);
+        data.put("total", total);
+        data.put("page", page);
+        data.put("size", size);
+
+        result.put("code", 0);
+        result.put("message", "ok");
+        result.put("data", data);
+        return result;
     }
 }

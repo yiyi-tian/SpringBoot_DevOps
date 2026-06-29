@@ -235,4 +235,11 @@ public class MessageService {
         }
         return messageServiceClient.testCarrier(id);
     }
+
+    /**
+     *信箱查询 
+     **/
+    public Map<String, Object> getInbox(Map<String, Object> params) {
+        return messageServiceClient.getInbox(params);
+    }
 }

@@ -76,4 +76,8 @@ public interface MessageServiceClient {
 
     @DeleteExchange("/sending-records")
     Map<String, Object> deleteSendingRecord(@RequestBody Map<String, Object> request);
+
+    //信箱查询
+    @GetExchange("/messages/inbox")
+    Map<String, Object> getInbox(@RequestParam Map<String, Object> params);
 }

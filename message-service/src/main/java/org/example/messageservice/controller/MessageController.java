@@ -127,4 +127,10 @@ public class MessageController {
     public Map<String, Object> triggerScheduler() {
         return messageService.triggerScheduler();
     }
+
+    // ==================== 信箱查询 ====================
+    @GetMapping("/internal/messages/inbox")
+    public Map<String, Object> getInbox(@RequestParam Map<String, Object> params) {
+        return messageService.getInbox(params);
+    }
 }
