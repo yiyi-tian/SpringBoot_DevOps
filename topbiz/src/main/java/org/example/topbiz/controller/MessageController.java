@@ -46,7 +46,16 @@ public class MessageController {
         request.put("id", id);
         return Result.ok(messageService.updateTemplate(request));
     }
+    @GetMapping("/templates/{id}")
+    public Result<Map<String, Object>> getTemplate(@PathVariable Long id) {
+        return Result.ok(messageService.getTemplate(id));
+    }
 
+    @DeleteMapping("/templates/{id}")
+    public Result<Map<String, Object>> deleteTemplate(@PathVariable Long id) {
+        return Result.ok(messageService.deleteTemplate(id));
+    }
+    
     // ==================== 模板变量 ====================
     @GetMapping("/variables/schema")
     public Result<Map<String, Object>> getVariableSchema() {

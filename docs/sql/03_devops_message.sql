@@ -38,8 +38,35 @@ CREATE TABLE IF NOT EXISTS `msg_template` (
     `template_id` BIGINT AUTO_INCREMENT PRIMARY KEY,
     `name`        VARCHAR(128) NOT NULL COMMENT '模板名称',
     `content`     TEXT NOT NULL COMMENT '模板正文',
-    `channel_type` VARCHAR(32) NOT NULL COMMENT '渠道类型',
+    `channel_type` VARCHAR(32) NOT NULL COMMENT 'IN_APP/TENCENT_SMS/EMAIL',
     `status`      VARCHAR(32) DEFAULT 'DRAFT' COMMENT 'DRAFT/ACTIVE/DISABLED',
     `created_at`  DATETIME DEFAULT CURRENT_TIMESTAMP,
     `updated_at`  DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 模板变量
+CREATE TABLE IF NOT EXISTS `msg_variable` (
+    `variable_id`  BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `var_key`      VARCHAR(64) NOT NULL COMMENT '变量名（占位符）',
+    `name`         VARCHAR(128) NOT NULL COMMENT '变量显示名',
+    `type`         VARCHAR(32) NOT NULL DEFAULT 'STRING' COMMENT 'STRING/NUMBER/DATE',
+    `required`     TINYINT(1) DEFAULT 1,
+    `default_value` VARCHAR(255) NULL,
+    `scope`        VARCHAR(32) DEFAULT 'GLOBAL' COMMENT 'GLOBAL/TEMPLATE',
+    `status`       VARCHAR(32) DEFAULT 'ACTIVE',
+    `description`  VARCHAR(255) NULL,
+    `created_at`   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `updated_at`   DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY `uk_var_key` (`var_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 模板变量关联表
+CREATE TABLE IF NOT EXISTS `template_variable` (
+    `id`                BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `template_id`       BIGINT NOT NULL,
+    `variable_id`       BIGINT NOT NULL,
+    `required_override` TINYINT(1) NULL COMMENT '覆盖默认required',
+    `default_override`  VARCHAR(255) NULL COMMENT '覆盖默认default_value',
+    `created_at`        DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY `uk_template_var` (`template_id`, `variable_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

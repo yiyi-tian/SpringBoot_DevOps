@@ -35,6 +35,12 @@ public interface MessageServiceClient {
     @PutExchange("/message-templates")
     Map<String, Object> updateTemplate(@RequestBody Map<String, Object> request);
 
+    @GetExchange("/message-templates/{id}")
+    Map<String, Object> getTemplate(@PathVariable Long id);
+
+    @DeleteExchange("/message-templates/{id}")
+    Map<String, Object> deleteTemplate(@PathVariable Long id);
+    
     // 变量管理
     @GetExchange("/variables/schema")
     Map<String, Object> getVariableSchema();
@@ -76,6 +82,10 @@ public interface MessageServiceClient {
 
     @DeleteExchange("/sending-records")
     Map<String, Object> deleteSendingRecord(@RequestBody Map<String, Object> request);
+
+    //调度
+    @PostExchange("/scheduler/trigger")
+    Map<String, Object> triggerScheduler();
 
     //信箱查询
     @GetExchange("/messages/inbox")

@@ -50,6 +50,16 @@ public class MessageController {
         return messageService.queryTemplates(params);
     }
 
+    @GetMapping("/internal/message-templates/{id}")
+    public Map<String, Object> getTemplate(@PathVariable Long id) {
+        return messageService.getTemplate(id);
+    }
+
+    @DeleteMapping("/internal/message-templates/{id}")
+    public Map<String, Object> deleteTemplate(@PathVariable Long id) {
+        return messageService.deleteTemplate(id);
+    }
+
     @PutMapping("/internal/message-templates")
     public Map<String, Object> updateTemplate(@RequestBody Map<String, Object> request) {
         return messageService.updateTemplate(request);

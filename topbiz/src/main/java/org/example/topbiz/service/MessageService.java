@@ -154,7 +154,21 @@ public class MessageService {
         }
         return messageServiceClient.updateTemplate(request);
     }
+    
+    /**
+     * 获取模板详情
+     */
+    public Map<String, Object> getTemplate(Long id) {
+        return messageServiceClient.getTemplate(id);
+    }
 
+    /**
+     * 删除模板
+     */
+    public Map<String, Object> deleteTemplate(Long id) {
+        return messageServiceClient.deleteTemplate(id);
+    }
+    
     // ==================== 模板变量 ====================
 
     public Map<String, Object> getVariableSchema() {
