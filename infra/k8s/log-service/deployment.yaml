@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: log-service
+  namespace: devops
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: log-service
+  template:
+    metadata:
+      labels:
+        app: log-service
+    spec:
+      containers:
+        - name: log-service
+          image: devops/log-service:0.2.0-SNAPSHOT
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8083
+          envFrom:
+            - configMapRef:
+                name: devops-app-config
+            - secretRef:
+                name: devops-app-secret
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:mysql://mysql:3306/devops_log?serverTimezone=Asia/Shanghai&characterEncoding=utf8"
+            - name: DEVOPS_CLICKHOUSE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: devops-app-config
+                  key: DEVOPS_CLICKHOUSE_URL
+          volumeMounts:
+            - name: access-logs
+              mountPath: /app/logs/access
+          readinessProbe:
+            tcpSocket:
+              port: 8083
+            initialDelaySeconds: 40
+            periodSeconds: 10
+      volumes:
+        - name: access-logs
+          persistentVolumeClaim:
+            claimName: access-logs
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: log-service
+  namespace: devops
+spec:
+  type: ClusterIP
+  selector:
+    app: log-service
+  ports:
+    - port: 8083
+      targetPort: 8083

@@ -22,7 +22,7 @@ devops:
     password: ""
   access-log:
     service-name: log
-    output-dir: shared-logs/access
+    output-dir: ../shared-logs/access
     file-pattern: "access-{date}.jsonl"
     log-body: true
     body-on-error-only: true

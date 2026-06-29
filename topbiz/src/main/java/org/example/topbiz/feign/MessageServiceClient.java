@@ -25,6 +25,9 @@ public interface MessageServiceClient {
     @PostExchange("/message/verify")
     Map<String, Object> verifyCode(@RequestBody Map<String, Object> request);
 
+    @PostExchange("/message/email/registration-confirm")
+    Map<String, Object> sendRegistrationConfirmEmail(@RequestBody Map<String, Object> request);
+
     // 模板管理
     @PostExchange("/message-templates")
     Map<String, Object> createTemplate(@RequestBody Map<String, Object> request);
@@ -68,7 +71,7 @@ public interface MessageServiceClient {
     Map<String, Object> deleteCarrier(@PathVariable Long id);
 
     @PostExchange("/msg/carriers/{id}/test")
-    Map<String, Object> testCarrier(@PathVariable Long id);
+    Map<String, Object> testCarrier(@PathVariable Long id, @RequestBody(required = false) Map<String, Object> request);
 
     // 发送记录
     @GetExchange("/sending-records")

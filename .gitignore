@@ -48,4 +48,12 @@ Thumbs.db
 # Logs
 logs/
 shared-logs/**/*.jsonl
+topbiz/shared-logs/
+user-service/shared-logs/
+message-service/shared-logs/
+log-service/shared-logs/
 *.log
+
+# Frontend
+frontend/node_modules/
+frontend/dist/

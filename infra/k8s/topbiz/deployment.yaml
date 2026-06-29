@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: topbiz
+  namespace: devops
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: topbiz
+  template:
+    metadata:
+      labels:
+        app: topbiz
+    spec:
+      containers:
+        - name: topbiz
+          image: devops/topbiz:0.2.0-SNAPSHOT
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: devops-app-config
+            - secretRef:
+                name: devops-app-secret
+          volumeMounts:
+            - name: access-logs
+              mountPath: /app/logs/access
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: access-logs
+          persistentVolumeClaim:
+            claimName: access-logs
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: topbiz
+  namespace: devops
+spec:
+  type: ClusterIP
+  selector:
+    app: topbiz
+  ports:
+    - port: 8080
+      targetPort: 8080

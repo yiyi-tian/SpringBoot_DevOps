@@ -1,0 +1,28 @@
+spring:
+  data:
+    redis:
+      host: redis
+      port: 6379
+      timeout: 10000ms
+
+devops:
+  services:
+    user-url: http://user-service:8081
+    message-url: http://message-service:8082
+    log-url: http://log-service:8083
+  internal:
+    token: ${DEVOPS_INTERNAL_TOKEN:dev-internal-secret}
+  messaging:
+    welcome:
+      template-id: ${DEVOPS_MESSAGING_WELCOME_TEMPLATE_ID:1}
+      channel-type: ${DEVOPS_MESSAGING_WELCOME_CHANNEL_TYPE:IN_APP}
+    template:
+      default-status: DRAFT
+  access-log:
+    service-name: topbiz
+    output-dir: logs/access
+    file-pattern: "access-{date}.jsonl"
+    log-body: true
+    body-on-error-only: true
+    max-body-length: 4096
+    slow-request-threshold-ms: 3000

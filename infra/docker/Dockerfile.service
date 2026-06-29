@@ -1,0 +1,14 @@
+# Multi-module Spring Boot service image
+# Build: docker compose -f infra/docker-compose.yml build
+FROM eclipse-temurin:17-jre-alpine
+
+ARG SERVICE_MODULE
+ARG SERVICE_PORT=8080
+
+WORKDIR /app
+
+COPY ${SERVICE_MODULE}/target/${SERVICE_MODULE}-*.jar app.jar
+
+EXPOSE ${SERVICE_PORT}
+
+ENTRYPOINT ["java", "-jar", "app.jar"]

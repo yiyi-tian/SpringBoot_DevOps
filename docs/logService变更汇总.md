@@ -35,6 +35,7 @@
 | 注册仍 500（Redis 已通）                                      | `HttpInterfaceConfig` 对只读 headers 调用 `set`  | 改用 `ClientRequest.from(...).header(...).build()`   |
 | 409 已注册却显示 `code:0`                                    | `AuthController` 一律 `Result.ok(result)`     | 增加 `fromServiceResult` 透传内部 `code`                 |
 | user-service 启动 `ddlApplicationRunner`                 | MyBatis-Plus Boot2 starter 与 SB3 不兼容        | 改为 `mybatis-plus-spring-boot3-starter` 3.5.7       |
+| Vector 采不到 topbiz 访问日志                              | `output-dir: shared-logs/access` 相对模块 cwd，写到 `topbiz/shared-logs/` | 改为 `../shared-logs/access`（IDE）；Docker 用 `logs/access` + 共享卷 |
 
 
 ## 4. 目录说明：infra / shared-logs / logs
@@ -43,19 +44,24 @@
 | 目录                                | 作用                                          | 何时使用                                                                                                                 |
 | --------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `[infra/](../infra/)`             | Docker Compose、Vector 配置、初始化/测试脚本           | 本地起 ClickHouse/Vector；或全栈 Docker 部署                                                                                  |
-| `[shared-logs/](../shared-logs/)` | IDE `mvn spring-boot:run` 时访问日志 JSONL 输出根目录 | 配置项 `devops.access-log.output-dir`（相对路径 `shared-logs/access`），实际文件在 `{output-dir}/{serviceName}/access-{date}.jsonl` |
-| `[logs/](../logs/)`               | `.gitignore` 忽略；Docker 容器内相对路径              | 全服务跑在 Docker 时使用 compose 卷 `access_logs`                                                                             |
+| `[shared-logs/](../shared-logs/)` | IDE：仓库根 `shared-logs/access/{service}/` | 配置 `output-dir: ../shared-logs/access`（相对各模块目录）；Vector local compose 挂载此目录 |
+| `[logs/](../logs/)` | Docker 全栈：容器内 `logs/access/{service}/` | `application-docker.yml` + compose 卷 `access_logs`（四服务与 Vector **共享同一卷**） |
 
+**Vector 与 log-service 关系**：Vector 是 infra 独立服务，通过共享目录/卷采集 jsonl；log-service 只查询 ClickHouse，**不**负责读 topbiz 容器内文件。
 
-**数据流（本地 IDE 开发）**：
+**数据流（IDE + local compose）**：
 
 ```
-Java 服务 → shared-logs/access/{service}/access-*.jsonl
-         → Vector（docker-compose.local 挂载 shared-logs/access）
-         → ClickHouse devops.access_log
+各模块 mvn spring-boot:run → 仓库根 shared-logs/access/{service}/access-*.jsonl
+                          → Vector（挂载 → /var/log/access）
+                          → ClickHouse
 ```
 
-**注意**：API 文档中「Docker 全栈」场景写 `logs/access/`；「IDE 本地」场景写 `shared-logs/access/`，二者结构均为 `{serviceName}/access-{date}.jsonl`。
+**数据流（全栈 Docker）**：
+
+```
+四 Java 容器 write logs/access/{service}/ → access_logs 卷 ← Vector read /var/log/access
+```
 
 ## 5. 配置模板
 
@@ -80,7 +86,7 @@ Java 服务 → shared-logs/access/{service}/access-*.jsonl
 | **可提交占位**     | `shared-logs/access/.gitkeep`                       | 保留目录结构                   |
 
 
-访问日志 `output-dir` 使用相对路径 `shared-logs/access`；**必须在各服务模块目录下**执行 `mvn spring-boot:run`（工作目录为模块根）。
+访问日志 IDE 配置：`output-dir: ../shared-logs/access`（须在**各模块目录**下 `mvn spring-boot:run`）。Docker profile：`logs/access` + `SPRING_PROFILES_ACTIVE=docker`。勿在模块下使用 `shared-logs/access`（会写到子目录，Vector 读不到）。
 
 ## 7. 管理员与测试
 

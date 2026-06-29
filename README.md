@@ -8,6 +8,7 @@
 1. **Clone 并编译**：`mvn clean install`
 2. **配置**：复制 `application-dev-example.yml` → `application-dev.yml`（user-service、topbiz、log-service），MySQL/Redis 地址**向组长索取**后填入
 3. **启动**：`docker compose -f infra/docker-compose.local.yml up -d`，再在各服务目录 `mvn spring-boot:run`（8081→8082→8083→8080）
+4. **（可选）演示前端**：`cd frontend && npm install && npm run dev`，打开 http://localhost:5173
 
 详细步骤、FAQ、Git 提交说明见 **[开发指南 DEVELOPMENT.md](./docs/DEVELOPMENT.md)**。
 
@@ -28,18 +29,26 @@
 | 目录 | 作用 | 何时使用 |
 |------|------|----------|
 | [infra/](./infra/) | DevOps 基础设施：`docker-compose.yml`（全栈）、**`docker-compose.local.yml`（推荐本地：仅 CH+Vector）**、[vector/vector.toml](./infra/vector/vector.toml)、初始化/测试脚本 | 本地起 ClickHouse/Vector；或一键 Docker 部署全服务 |
-| [shared-logs/](./shared-logs/) | **IDE `mvn spring-boot:run` 时**各服务访问日志 JSONL 输出目录（`devops.access-log.output-dir` → 默认 `.../shared-logs/access/{serviceName}/`） | 本地开发；Vector 通过 local compose 挂载此目录采集 |
-| [logs/](./logs/) | **`.gitignore` 忽略**；Docker 容器内相对路径 `logs/access`（compose 卷 `access_logs`） | 全服务跑在 Docker 里时使用，与 `shared-logs` 二选一 |
+| [shared-logs/](./shared-logs/) | **IDE 开发**：四服务统一写入仓库根 `shared-logs/access/{serviceName}/`（配置 `output-dir: ../shared-logs/access`，须在**各模块目录**下启动） | local compose 挂载此目录给 Vector |
+| [logs/](./logs/) | **Docker 全栈**：容器内 `logs/access/{serviceName}/`（`application-docker.yml`）；compose 卷 `access_logs` 四服务与 Vector **共享** | 全服务跑在 Docker 时使用 |
 
-**数据流（本地 IDE 开发）**：
+**Vector 说明**：Vector 是 **infra 独立容器**，不归属 log-service。log-service 只**查询** ClickHouse；采集靠 **共享目录/卷**（IDE 绑 `shared-logs/access`，Docker 用 `access_logs` 卷）。
+
+**数据流（IDE + local compose）**：
 
 ```
-Java 服务 → shared-logs/access/{service}/access-*.jsonl
-         → Vector（docker-compose.local 挂载 shared-logs/access）
-         → ClickHouse devops.access_log
+各模块 mvn spring-boot:run → 仓库根 shared-logs/access/{service}/access-*.jsonl
+                            → Vector（挂载 shared-logs/access → /var/log/access）
+                            → ClickHouse
 ```
 
-Vector 配置读取 `/var/log/access/*/*.jsonl`；`docker-compose.local.yml` 将 `shared-logs/access` 挂载到该路径。
+**数据流（全栈 Docker）**：
+
+```
+topbiz/user/message/log 容器 → 写入 access_logs 卷 /app/logs/access/{service}/
+Vector 容器                  → 只读同一卷 /var/log/access/
+                            → ClickHouse
+```
 
 ## 配置文件说明
 
@@ -50,15 +59,55 @@ Vector 配置读取 `/var/log/access/*/*.jsonl`；`docker-compose.local.yml` 将
 | `application.yml` | 公共配置，指定激活 profile |
 | `application-dev.yml` | 开发环境本地配置（**已在 .gitignore，勿提交密码**） |
 | `application-dev-example.yml` | 配置模板，复制后改名为 `application-dev.yml` 并填写 |
+| `application-docker.yml` | Docker Compose / K8s 容器内配置（服务间 DNS、内部 token） |
 
 **配置模板清单**：
 
 | 服务 | 模板路径 | 要点 |
 |------|----------|------|
 | user-service | `user-service/src/main/resources/application-dev-example.yml` | 占位符 `your_mysql_host` → 库 `devops_user` |
-| topbiz | `topbiz/src/main/resources/application-dev-example.yml` | 占位符 `your_redis_host`（Shiro Session） |
+| topbiz | `topbiz/src/main/resources/application-dev-example.yml` | Redis + `devops.services.*` 默认 localhost |
 | log-service | `log-service/src/main/resources/application-dev-example.yml` | 云 MySQL `devops_log` + 本地 ClickHouse `localhost:8123` |
-各服务 `application.yml` 中 `devops.access-log.output-dir` 指向 `shared-logs/access`（IDE 本地开发）。
+| message-service | `message-service/src/main/resources/application-dev-example.yml` | 云 MySQL `devops_message` |
+
+各服务 IDE 配置项 `devops.access-log.output-dir` 为 **`../shared-logs/access`**（相对各模块目录，汇聚到仓库根）。Docker profile 使用 **`logs/access`**（写入 `access_logs` 共享卷）。
+
+### 内部服务调用（dev / docker / K8s）
+
+| 环境 | topbiz → user-service | 内部鉴权 |
+|------|----------------------|----------|
+| IDE 本地 | `http://localhost:8081` | 可不配置 token（dev profile 跳过） |
+| Docker Compose | `http://user-service:8081` | `DEVOPS_INTERNAL_TOKEN`（compose 默认 `dev-internal-secret`） |
+| Kubernetes | `http://user-service:8081` | Secret `DEVOPS_INTERNAL_TOKEN` |
+
+对外**仅暴露 topbiz 8080**（Compose）或 Ingress（K8s）；8081–8083 不映射到宿主机。
+
+## Docker 全栈部署（Compose）
+
+```powershell
+cd infra
+# 构建镜像前先在仓库根目录: mvn clean package -DskipTests
+docker compose up -d --build
+```
+
+生产建议叠加 overlay，不暴露 MySQL/Redis/ClickHouse 端口：
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+## Kubernetes 集群部署
+
+清单位于 [infra/k8s/](infra/k8s/README.md)。仅 topbiz 通过 Ingress 对外；user / message / log 为 ClusterIP。
+
+```bash
+kubectl apply -f infra/k8s/namespace.yaml
+kubectl apply -f infra/k8s/configmap-app.yaml
+cp infra/k8s/secret-app.yaml.example infra/k8s/secret-app.yaml  # 编辑后 apply
+kubectl apply -R -f infra/k8s/
+```
+
+详见 [DEVELOPMENT.md §10](./docs/DEVELOPMENT.md#10-docker-与-kubernetes-部署)。
 
 ## 基础设施（本地 IDE 开发）
 
@@ -218,9 +267,15 @@ KEY `idx_user_id` (`user_id`)
 
 ### devops_message
 
-```sql
+见 [`docs/sql/03_devops_message.sql`](docs/sql/03_devops_message.sql)：
 
-```
+| 表 | 说明 |
+|----|------|
+| `msg_carrier` | 载体（IN_APP / TENCENT_SMS / EMAIL），`config_json` 存 SMTP 或 SMS 配置 |
+| `msg_template` | 消息模板；种子数据 `templateId=1` 为注册欢迎站内信（IN_APP，ACTIVE） |
+| `msg_message` | 发送流水（IN_APP 落库、EMAIL 发送记录） |
+
+欢迎信 `templateId` / `channelType` 由 topbiz 配置 `devops.messaging.welcome` 指定，勿在业务代码硬编码。
 
 ### devops_log
 

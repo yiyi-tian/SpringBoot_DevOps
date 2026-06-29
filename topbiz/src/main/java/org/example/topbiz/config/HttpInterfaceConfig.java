@@ -1,9 +1,12 @@
 package org.example.topbiz.config;
 
+import org.example.common.InternalAuthFilter;
+import org.example.common.InternalAuthProperties;
 import org.example.topbiz.feign.LogServiceClient;
 import org.example.topbiz.feign.MessageServiceClient;
 import org.example.topbiz.feign.UserServiceClient;
 import org.slf4j.MDC;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
@@ -15,21 +18,31 @@ import org.springframework.web.service.invoker.HttpServiceProxyFactory;
 import java.time.Duration;
 
 @Configuration
+@EnableConfigurationProperties({DevopsServiceProperties.class, DevopsMessagingProperties.class, InternalAuthProperties.class})
 public class HttpInterfaceConfig {
+
+    private final DevopsServiceProperties serviceProperties;
+    private final InternalAuthProperties internalAuthProperties;
+
+    public HttpInterfaceConfig(DevopsServiceProperties serviceProperties,
+                               InternalAuthProperties internalAuthProperties) {
+        this.serviceProperties = serviceProperties;
+        this.internalAuthProperties = internalAuthProperties;
+    }
 
     @Bean
     public UserServiceClient userServiceClient() {
-        return createClient(UserServiceClient.class, "http://localhost:8081");
+        return createClient(UserServiceClient.class, serviceProperties.getUserUrl());
     }
 
     @Bean
     public MessageServiceClient messageServiceClient() {
-        return createClient(MessageServiceClient.class, "http://localhost:8082");
+        return createClient(MessageServiceClient.class, serviceProperties.getMessageUrl());
     }
 
     @Bean
     public LogServiceClient logServiceClient() {
-        return createClient(LogServiceClient.class, "http://localhost:8083");
+        return createClient(LogServiceClient.class, serviceProperties.getLogUrl());
     }
 
     private <T> T createClient(Class<T> clazz, String baseUrl) {
@@ -43,6 +56,9 @@ public class HttpInterfaceConfig {
                     }
                     if (!request.headers().containsKey("Content-Type")) {
                         builder.header("Content-Type", MediaType.APPLICATION_JSON_VALUE);
+                    }
+                    if (internalAuthProperties.isEnforcementEnabled()) {
+                        builder.header(InternalAuthFilter.HEADER_NAME, internalAuthProperties.getToken());
                     }
                     return next.exchange(builder.build());
                 })

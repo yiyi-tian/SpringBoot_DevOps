@@ -1,9 +1,8 @@
 package org.example.topbiz.service;
 
-import org.apache.shiro.SecurityUtils;
 import org.example.topbiz.feign.LogServiceClient;
-import org.example.topbiz.feign.MessageServiceClient;
 import org.example.topbiz.feign.UserServiceClient;
+import org.example.topbiz.support.SecurityUtilsHelper;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -21,7 +20,7 @@ public class AdminService {
     private LogServiceClient logServiceClient;
 
     @Autowired
-    private MessageServiceClient messageServiceClient;
+    private WelcomeMessageService welcomeMessageService;
 
     // ==================== 用户管理 ====================
 
@@ -33,7 +32,7 @@ public class AdminService {
             Long newUserId = Long.valueOf(String.valueOf(data.get("userId")));
             recordAdminAudit("ADMIN_USER_CREATE", String.valueOf(newUserId));
 
-            sendWelcomeMessage(newUserId);
+            welcomeMessageService.sendWelcomeMessage(newUserId);
         }
         return result;
     }
@@ -143,18 +142,88 @@ public class AdminService {
         return userServiceClient.searchGroupPermissions(params);
     }
 
+    // ==================== 用户直接权限管理 ====================
+
+    public Map<String, Object> createUserPermission(Map<String, Object> request) {
+        Map<String, Object> result = userServiceClient.createUserPermission(request);
+        if (result != null && "0".equals(String.valueOf(result.get("code")))) {
+            String targetId = request.get("userId") + ":" + request.get("permId");
+            recordAdminAudit("ADMIN_USER_PERMISSION_CREATE", targetId);
+        }
+        return result;
+    }
+
+    public Map<String, Object> deleteUserPermission(Map<String, Object> request) {
+        Map<String, Object> result = userServiceClient.deleteUserPermission(request);
+        if (result != null && "0".equals(String.valueOf(result.get("code")))) {
+            String targetId = String.valueOf(request.get("id"));
+            recordAdminAudit("ADMIN_USER_PERMISSION_DELETE", targetId);
+        }
+        return result;
+    }
+
+    public Map<String, Object> updateUserPermission(Map<String, Object> request) {
+        return userServiceClient.updateUserPermission(request);
+    }
+
+    public Map<String, Object> searchUserPermissions(Map<String, Object> params) {
+        return userServiceClient.searchUserPermissions(params);
+    }
+
+    // ==================== 权限申请与审批 ====================
+
+    public Map<String, Object> applyGroupPermission(Map<String, Object> request) {
+        Map<String, Object> result = userServiceClient.applyGroupPermission(request);
+        if (result != null && "0".equals(String.valueOf(result.get("code")))) {
+            String targetId = request.get("groupId") + ":" + request.get("permId");
+            recordAdminAudit("GROUP_PERMISSION_APPLY", targetId);
+        }
+        return result;
+    }
+
+    public Map<String, Object> approveUserPermission(Map<String, Object> request) {
+        Map<String, Object> result = userServiceClient.approveUserPermission(request);
+        if (result != null && "0".equals(String.valueOf(result.get("code")))) {
+            String targetId = String.valueOf(request.get("id"));
+            recordAdminAudit("USER_PERMISSION_APPROVE", targetId);
+        }
+        return result;
+    }
+
+    public Map<String, Object> rejectUserPermission(Map<String, Object> request) {
+        Map<String, Object> result = userServiceClient.rejectUserPermission(request);
+        if (result != null && "0".equals(String.valueOf(result.get("code")))) {
+            String targetId = String.valueOf(request.get("id"));
+            recordAdminAudit("USER_PERMISSION_REJECT", targetId);
+        }
+        return result;
+    }
+
+    public Map<String, Object> approveGroupPermission(Map<String, Object> request) {
+        Map<String, Object> result = userServiceClient.approveGroupPermission(request);
+        if (result != null && "0".equals(String.valueOf(result.get("code")))) {
+            String targetId = String.valueOf(request.get("id"));
+            recordAdminAudit("GROUP_PERMISSION_APPROVE", targetId);
+        }
+        return result;
+    }
+
+    public Map<String, Object> rejectGroupPermission(Map<String, Object> request) {
+        Map<String, Object> result = userServiceClient.rejectGroupPermission(request);
+        if (result != null && "0".equals(String.valueOf(result.get("code")))) {
+            String targetId = String.valueOf(request.get("id"));
+            recordAdminAudit("GROUP_PERMISSION_REJECT", targetId);
+        }
+        return result;
+    }
+
     // ==================== 私有方法 ====================
 
     /**
      * 获取当前登录的管理员用户ID
      */
     private Long getCurrentUserId() {
-        try {
-            String userId = (String) SecurityUtils.getSubject().getPrincipal();
-            return userId != null ? Long.valueOf(userId) : null;
-        } catch (Exception e) {
-            return null;
-        }
+        return SecurityUtilsHelper.getCurrentUserId();
     }
 
     /**
@@ -177,19 +246,4 @@ public class AdminService {
         }
     }
 
-    /**
-     * 发送欢迎站内信
-     */
-    private void sendWelcomeMessage(Long userId) {
-        try {
-            Map<String, Object> msgRequest = new HashMap<>();
-            msgRequest.put("channelType", "IN_APP");
-            msgRequest.put("templateId", 1);
-            msgRequest.put("receiver", String.valueOf(userId));
-            msgRequest.put("variables", new HashMap<>());
-            messageServiceClient.sendInstant(msgRequest);
-        } catch (Exception e) {
-            System.err.println("发送欢迎信失败: " + e.getMessage());
-        }
-    }
 }

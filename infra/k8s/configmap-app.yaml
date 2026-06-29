@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devops-app-config
+  namespace: devops
+data:
+  SPRING_PROFILES_ACTIVE: "docker"
+  DEVOPS_SERVICES_USER_URL: "http://user-service:8081"
+  DEVOPS_SERVICES_MESSAGE_URL: "http://message-service:8082"
+  DEVOPS_SERVICES_LOG_URL: "http://log-service:8083"
+  SPRING_DATA_REDIS_HOST: "redis"
+  SPRING_DATASOURCE_USERNAME: "root"
+  DEVOPS_CLICKHOUSE_URL: "jdbc:clickhouse://clickhouse:8123/devops"
+  DEVOPS_CLICKHOUSE_USERNAME: "default"
+  DEVOPS_ACCESS_LOG_OUTPUT_DIR: "logs/access"

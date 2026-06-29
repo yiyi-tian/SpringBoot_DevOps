@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vector
+  namespace: devops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vector
+  template:
+    metadata:
+      labels:
+        app: vector
+    spec:
+      containers:
+        - name: vector
+          image: timberio/vector:0.35.0-alpine
+          args: ["--config", "/etc/vector/vector.toml"]
+          volumeMounts:
+            - name: access-logs
+              mountPath: /var/log/access
+              readOnly: true
+            - name: vector-config
+              mountPath: /etc/vector/vector.toml
+              subPath: vector.toml
+              readOnly: true
+      volumes:
+        - name: access-logs
+          persistentVolumeClaim:
+            claimName: access-logs
+        - name: vector-config
+          configMap:
+            name: vector-config

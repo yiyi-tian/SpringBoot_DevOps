@@ -38,6 +38,11 @@ public class MessageController {
         return messageService.verifyCode(request);
     }
 
+    @PostMapping("/internal/message/email/registration-confirm")
+    public Map<String, Object> sendRegistrationConfirmEmail(@RequestBody Map<String, Object> request) {
+        return messageService.sendRegistrationConfirmEmail(request);
+    }
+
     // ==================== 消息模板 ====================
     @PostMapping("/internal/message-templates")
     public Map<String, Object> createTemplate(@RequestBody Map<String, Object> request) {
@@ -107,8 +112,9 @@ public class MessageController {
     }
 
     @PostMapping("/internal/msg/carriers/{id}/test")
-    public Map<String, Object> testCarrier(@PathVariable Long id) {
-        return messageService.testCarrier(id);
+    public Map<String, Object> testCarrier(@PathVariable Long id,
+                                           @RequestBody(required = false) Map<String, Object> request) {
+        return messageService.testCarrier(id, request);
     }
 
     // ==================== 发送记录 ====================

@@ -41,6 +41,15 @@ public class AccessLogInterceptor implements HandlerInterceptor {
 
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
+        try {
+            doAfterCompletion(request, response);
+        } catch (Exception e) {
+            log.warn("Failed to record access log uri={} method={}: {}",
+                    request.getRequestURI(), request.getMethod(), e.getMessage());
+        }
+    }
+
+    private void doAfterCompletion(HttpServletRequest request, HttpServletResponse response) {
         Object startObj = request.getAttribute(START_TIME);
         long startTime = startObj instanceof Long ? (Long) startObj : System.currentTimeMillis();
         long costMs = System.currentTimeMillis() - startTime;
