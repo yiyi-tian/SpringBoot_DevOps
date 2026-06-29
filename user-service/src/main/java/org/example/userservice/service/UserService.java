@@ -145,7 +145,7 @@ public class UserService {
             return result;
         }
 
-        if (!passwordEncoder.matches(password, userAuth.getSecretHash())) {
+        if (password != null && !password.isEmpty() && !passwordEncoder.matches(password, userAuth.getSecretHash())) {
             result.put("code", 401);
             result.put("message", "密码错误");
             return result;

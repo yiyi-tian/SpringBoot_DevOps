@@ -94,4 +94,13 @@ public class MessageController {
     public Result<Map<String, Object>> testCarrier(@PathVariable Long id) {
         return Result.ok(messageService.testCarrier(id));
     }
+    
+    @GetMapping("/messages/inbox")
+    public Result<Map<String, Object>> getInbox(@RequestParam Map<String, Object> params) {
+        Map<String, Object> result = messageService.getInbox(params);
+        if (result != null && "0".equals(String.valueOf(result.get("code")))) {
+            return Result.ok((Map<String, Object>) result.get("data"));
+        }
+        return Result.error(500, "查询失败");
+    }
 }

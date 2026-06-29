@@ -29,12 +29,6 @@
             <artifactId>lombok</artifactId>
         </dependency>
 
-        <dependency>
-            <groupId>com.baomidou</groupId>
-            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
-            <version>3.5.7</version>
-        </dependency>
-
         <!-- mysql -->
         <dependency>
             <groupId>com.mysql</groupId>
@@ -49,9 +43,9 @@
             <version>3.5.7</version>
         </dependency>
         
-        <dependency>\
-            <groupId>org.springframework.boot</groupId>\
-            <artifactId>spring-boot-starter-data-redis</artifactId>\
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
 
         <dependency>

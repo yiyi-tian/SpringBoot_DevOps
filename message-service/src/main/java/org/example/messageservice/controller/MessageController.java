@@ -130,7 +130,7 @@ public class MessageController {
     }
 
     // ==================== 信箱查询 ====================
-    @GetMapping("/messages/inbox")
+    @GetMapping("/internal/messages/inbox")
     public Result<Map<String, Object>> getInbox(@RequestParam Map<String, Object> params) {
         Map<String, Object> result = messageService.getInbox(params);
         // message-service 返回 {code:0, data:{...}}，直接取 data 包装

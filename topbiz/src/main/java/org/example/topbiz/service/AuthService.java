@@ -54,6 +54,7 @@ public class AuthService {
         userRequest.put("credentialType", credentialType);
         userRequest.put("credential", credential);
         userRequest.put("password", code != null ? "" : password);
+        userRequest.put("code", code);
 
         Map<String, Object> userResult = userServiceClient.register(userRequest);
 
@@ -95,6 +96,7 @@ public class AuthService {
         userRequest.put("credentialType", credentialType);
         userRequest.put("credential", credential);
         userRequest.put("password", password);
+        userRequest.put("code", code);
 
         Map<String, Object> userResult = userServiceClient.login(userRequest);
 
