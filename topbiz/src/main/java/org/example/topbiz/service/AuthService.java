@@ -53,7 +53,7 @@ public class AuthService {
         Map<String, Object> userRequest = new HashMap<>();
         userRequest.put("credentialType", credentialType);
         userRequest.put("credential", credential);
-        userRequest.put("password", password);
+        userRequest.put("password", code != null ? "" : password);
 
         Map<String, Object> userResult = userServiceClient.register(userRequest);
 

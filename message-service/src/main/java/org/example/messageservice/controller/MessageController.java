@@ -3,6 +3,7 @@ package org.example.messageservice.controller;
 import org.example.messageservice.service.MessageService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+import org.example.common.Result;
 import java.util.Map;
 
 @RestController
@@ -129,8 +130,13 @@ public class MessageController {
     }
 
     // ==================== 信箱查询 ====================
-    @GetMapping("/internal/messages/inbox")
-    public Map<String, Object> getInbox(@RequestParam Map<String, Object> params) {
-        return messageService.getInbox(params);
+    @GetMapping("/messages/inbox")
+    public Result<Map<String, Object>> getInbox(@RequestParam Map<String, Object> params) {
+        Map<String, Object> result = messageService.getInbox(params);
+        // message-service 返回 {code:0, data:{...}}，直接取 data 包装
+        if (result != null && "0".equals(String.valueOf(result.get("code")))) {
+            return Result.ok((Map<String, Object>) result.get("data"));
+        }
+        return Result.error(500, "查询失败");
     }
 }

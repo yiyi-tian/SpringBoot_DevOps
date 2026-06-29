@@ -11,10 +11,11 @@ CREATE TABLE IF NOT EXISTS `user` (
     `user_id`      BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '用户唯一标识',
     `display_name` VARCHAR(128) NOT NULL COMMENT '用户昵称/展示名',
     `sex`          TINYINT      NULL COMMENT '性别（可选）',
-    `status`       VARCHAR(32)  NOT NULL DEFAULT 'active' COMMENT '用户状态：active, locked, deregistered',
-    `is_deleted`   TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '逻辑删除标记：0-未删除，1-已删除',
-    `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    `updated_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `status`        VARCHAR(32)  NOT NULL DEFAULT 'ACTIVE' COMMENT '用户状态：ACTIVE, LOCKED, DEREGISTERED, EXPIRED, INACTIVE',
+    `is_deleted`    TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '逻辑删除标记：0-未删除，1-已删除',
+    `last_login_at` DATETIME     NULL COMMENT '最后登录时间，用于活跃度检测',
+    `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     INDEX `idx_status` (`status`),
     INDEX `idx_is_deleted` (`is_deleted`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户主表';
@@ -81,24 +82,71 @@ CREATE TABLE IF NOT EXISTS `user_group` (
 
 -- 7. 组-权限关联表（依赖 group 和 permission）
 CREATE TABLE IF NOT EXISTS `group_permission` (
-    `id`       BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '关联记录唯一标识',
-    `group_id` BIGINT NOT NULL COMMENT '关联用户组ID',
-    `perm_id`  BIGINT NOT NULL COMMENT '关联权限ID',
+    `id`         BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '关联记录唯一标识',
+    `group_id`   BIGINT      NOT NULL COMMENT '关联用户组ID',
+    `perm_id`    BIGINT      NOT NULL COMMENT '关联权限ID',
+    `status`     VARCHAR(32) NOT NULL DEFAULT 'PENDING' COMMENT '状态：ACTIVE-已授权, PENDING-待审批, REJECTED-已驳回（默认PENDING，最小权限原则）',
+    `created_at` DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     UNIQUE KEY `uk_group_permission` (`group_id`, `perm_id`),
     INDEX `idx_group_id` (`group_id`),
     INDEX `idx_perm_id` (`perm_id`),
+    INDEX `idx_status` (`status`),
     CONSTRAINT `fk_group_permission_group` FOREIGN KEY (`group_id`) REFERENCES `group` (`group_id`) ON DELETE CASCADE,
     CONSTRAINT `fk_group_permission_perm` FOREIGN KEY (`perm_id`) REFERENCES `permission` (`perm_id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='组-权限关联表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='组-权限关联表（含申请审批状态）';
 
 -- 8. 用户-权限关联表（依赖 user 和 permission）
 CREATE TABLE IF NOT EXISTS `user_permission` (
-    `id`       BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '关联记录唯一标识',
-    `user_id`  BIGINT NOT NULL COMMENT '关联用户ID',
-    `perm_id`  BIGINT NOT NULL COMMENT '关联权限ID',
+    `id`         BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '关联记录唯一标识',
+    `user_id`    BIGINT      NOT NULL COMMENT '关联用户ID',
+    `perm_id`    BIGINT      NOT NULL COMMENT '关联权限ID',
+    `status`     VARCHAR(32) NOT NULL DEFAULT 'PENDING' COMMENT '状态：ACTIVE-已授权, PENDING-待审批, REJECTED-已驳回（默认PENDING，最小权限原则）',
+    `created_at` DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     UNIQUE KEY `uk_user_permission` (`user_id`, `perm_id`),
     INDEX `idx_user_id` (`user_id`),
     INDEX `idx_perm_id` (`perm_id`),
+    INDEX `idx_status` (`status`),
     CONSTRAINT `fk_user_permission_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE CASCADE,
     CONSTRAINT `fk_user_permission_perm` FOREIGN KEY (`perm_id`) REFERENCES `permission` (`perm_id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户-权限关联表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户-权限关联表（含申请审批状态）';
+
+-- =====================================================
+-- v0.4.0: ALTER user + 新增 login_history / user_session 表
+-- 支持 IP 突变检测 (1.2.2.2) 和多端登录管理 (2.1.5)
+-- =====================================================
+
+-- 9. user 表增加最后登录 IP 字段
+ALTER TABLE `user`
+    ADD COLUMN `last_login_ip` VARCHAR(45) NULL COMMENT '最后登录IP（v4/v6）' AFTER `last_login_at`;
+
+-- 10. 用户登录历史表（IP突变检测数据源）
+CREATE TABLE IF NOT EXISTS `login_history` (
+    `id`          BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '记录ID',
+    `user_id`     BIGINT       NOT NULL COMMENT '用户ID',
+    `client_ip`   VARCHAR(45)  NOT NULL COMMENT '登录客户端IP',
+    `user_agent`  VARCHAR(512) NULL     COMMENT 'User-Agent请求头',
+    `session_id`  VARCHAR(64)  NULL     COMMENT 'Shiro会话ID',
+    `login_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '登录时间',
+    INDEX `idx_user_id` (`user_id`),
+    INDEX `idx_login_at` (`login_at`),
+    INDEX `idx_user_ip` (`user_id`, `client_ip`),
+    CONSTRAINT `fk_login_history_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户登录历史（IP突变检测数据源）';
+
+-- 11. 用户活跃会话表（多端登录管理）
+CREATE TABLE IF NOT EXISTS `user_session` (
+    `id`              BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '记录ID',
+    `user_id`         BIGINT      NOT NULL COMMENT '用户ID',
+    `session_id`      VARCHAR(64) NOT NULL COMMENT 'Shiro会话ID（对应Redis key）',
+    `device_type`     VARCHAR(32) NOT NULL DEFAULT 'UNKNOWN' COMMENT '设备类型：WEB/ANDROID/IOS/DESKTOP/UNKNOWN',
+    `client_ip`       VARCHAR(45) NULL     COMMENT '登录客户端IP',
+    `user_agent`      VARCHAR(512) NULL    COMMENT 'User-Agent请求头',
+    `login_at`        DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '登录时间',
+    `last_active_at`  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最后活跃时间',
+    `status`          VARCHAR(16) NOT NULL DEFAULT 'ACTIVE' COMMENT '状态：ACTIVE/TERMINATED/EXPIRED',
+    INDEX `idx_user_id` (`user_id`),
+    INDEX `idx_session_id` (`session_id`),
+    INDEX `idx_status` (`status`),
+    INDEX `idx_user_status` (`user_id`, `status`),
+    CONSTRAINT `fk_user_session_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户活跃会话（多端登录管理）';

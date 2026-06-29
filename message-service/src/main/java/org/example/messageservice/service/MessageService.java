@@ -4,17 +4,24 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.example.messageservice.entity.MsgMessage;
 import org.example.messageservice.mapper.MsgMessageMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 消息服务：发送、验证码、模板、变量、载体
  */
 @Service
 public class MessageService {
+
+    @Autowired
+    private MsgMessageMapper msgMessageMapper;
+
+    @Autowired
+    private StringRedisTemplate redisTemplate;
 
     // ==================== 消息发送 ====================
 
@@ -112,38 +119,99 @@ public class MessageService {
      * 发送邮箱验证码
      */
     public Map<String, Object> sendEmailCode(Map<String, Object> request) {
-        // TODO: 提取参数：email, scene（REGISTER/LOGIN）
-        // TODO: 限流检查：Redis Key = verify:rate:{email}，60s 内只能发 1 次
-        // TODO: 生成 6 位随机数字验证码
-        // TODO: 存入 Redis：Key = verify:email:{scene}:{email}，Value = 验证码，TTL = 300s
-        // TODO: 调用邮件服务发送验证码（可复用 sendEmailMessage 逻辑）
-        // TODO: 返回 {"code":0, "message":"验证码已发送"}
-        throw new UnsupportedOperationException("TODO: 实现邮箱验证码发送");
+        Map<String, Object> result = new HashMap<>();
+        String email = (String) request.get("email");
+        String scene = (String) request.getOrDefault("scene", "REGISTER");
+
+        if (email == null || email.isEmpty()) {
+            result.put("code", 400); result.put("message", "邮箱不能为空"); return result;
+        }
+
+        // 限流检查
+        String rateKey = "verify:rate:email:" + email;
+        if (Boolean.TRUE.equals(redisTemplate.hasKey(rateKey))) {
+            result.put("code", 429); result.put("message", "发送过于频繁，请60秒后再试"); return result;
+        }
+
+        // 生成6位验证码
+        String code = String.format("%06d", new Random().nextInt(1000000));
+        String codeKey = "verify:email:" + scene + ":" + email;
+
+        // 存入 Redis（5分钟有效）
+        redisTemplate.opsForValue().set(codeKey, code, 5, TimeUnit.MINUTES);
+        redisTemplate.opsForValue().set(rateKey, "1", 60, TimeUnit.SECONDS);
+
+        // TODO: 调用邮件服务发送验证码（当前仅打印到控制台）
+        System.out.println("=================================");
+        System.out.println("  验证码: " + code);
+        System.out.println("  发送到: " + email);
+        System.out.println("  场景:   " + scene);
+        System.out.println("=================================");
+
+        result.put("code", 0); result.put("message", "验证码已发送"); return result;
     }
 
     /**
      * 发送手机验证码
      */
     public Map<String, Object> sendPhoneCode(Map<String, Object> request) {
-        // TODO: 提取参数：phone, scene（REGISTER/LOGIN）
-        // TODO: 限流检查：Redis Key = verify:rate:{phone}，60s 内只能发 1 次
-        // TODO: 生成 6 位随机数字验证码
-        // TODO: 存入 Redis：Key = verify:phone:{scene}:{phone}，Value = 验证码，TTL = 300s
-        // TODO: 调用腾讯云 SMS SDK 发送验证码（可复用 sendSmsMessage 逻辑）
-        // TODO: 返回 {"code":0, "message":"验证码已发送"}
-        throw new UnsupportedOperationException("TODO: 实现手机验证码发送");
+        Map<String, Object> result = new HashMap<>();
+        String phone = (String) request.get("phone");
+        String scene = (String) request.getOrDefault("scene", "REGISTER");
+
+        if (phone == null || phone.isEmpty()) {
+            result.put("code", 400); result.put("message", "手机号不能为空"); return result;
+        }
+
+        String rateKey = "verify:rate:phone:" + phone;
+        if (Boolean.TRUE.equals(redisTemplate.hasKey(rateKey))) {
+            result.put("code", 429); result.put("message", "发送过于频繁，请60秒后再试"); return result;
+        }
+
+        String code = String.format("%06d", new Random().nextInt(1000000));
+        String codeKey = "verify:phone:" + scene + ":" + phone;
+
+        redisTemplate.opsForValue().set(codeKey, code, 5, TimeUnit.MINUTES);
+        redisTemplate.opsForValue().set(rateKey, "1", 60, TimeUnit.SECONDS);
+
+        System.out.println("=================================");
+        System.out.println("  验证码: " + code);
+        System.out.println("  发送到: " + phone);
+        System.out.println("  场景:   " + scene);
+        System.out.println("=================================");
+
+        result.put("code", 0); result.put("message", "验证码已发送"); return result;
     }
 
     /**
      * 校验验证码
      */
     public Map<String, Object> verifyCode(Map<String, Object> request) {
-        // TODO: 提取参数：credentialType（PHONE/EMAIL）, target, scene, code
-        // TODO: 从 Redis 查询验证码：Key = verify:{phone/email}:{scene}:{target}
-        // TODO: 校验验证码是否匹配
-        // TODO: 校验成功后删除 Redis 中的验证码（一次性有效）
-        // TODO: 返回 {"code":0, "data":{"valid":true}}
-        throw new UnsupportedOperationException("TODO: 实现验证码校验");
+        Map<String, Object> result = new HashMap<>();
+        String credentialType = (String) request.get("credentialType");
+        String target = (String) request.get("target");
+        String scene = (String) request.get("scene");
+        String code = (String) request.get("code");
+
+        String prefix = "PHONE".equals(credentialType) ? "verify:phone:" : "verify:email:";
+        String codeKey = prefix + scene + ":" + target;
+
+        String storedCode = redisTemplate.opsForValue().get(codeKey);
+        if (storedCode == null) {
+            result.put("code", 400); result.put("message", "验证码不存在或已过期"); return result;
+        }
+        if (!storedCode.equals(code)) {
+            result.put("code", 400); result.put("message", "验证码错误"); return result;
+        }
+
+        // 一次性有效：校验成功后删除
+        redisTemplate.delete(codeKey);
+
+        result.put("code", 0); result.put("message", "验证码校验成功");
+        Map<String, Object> data = new HashMap<>();
+        data.put("valid", true);
+        result.put("data", data);
+        return result;
     }
 
     // ==================== 消息模板 ====================

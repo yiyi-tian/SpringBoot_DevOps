@@ -24,12 +24,22 @@ public class AuthController {
         if (credential == null || credential.isEmpty()) {
             return Result.error(400, "请输入手机号/邮箱/用户名");
         }
-        if (password == null || password.length() < 6) {
+
+        // 密码和验证码二选一
+        if ((password == null || password.isEmpty()) && (code == null || code.isEmpty())) {
+            return Result.error(400, "请输入密码或验证码");
+        }
+        if ((password != null && !password.isEmpty()) && (code != null && !code.isEmpty())) {
+            return Result.error(400, "密码和验证码只能选其一");
+        }
+
+        // 密码注册：校验长度
+        if (password != null && !password.isEmpty() && password.length() < 6) {
             return Result.error(400, "密码长度不能少于6位");
         }
 
         Map<String, Object> result = authService.register(credential, password, code);
-        return fromServiceResult(result);
+        return Result.ok(result);
     }
 
     @PostMapping("/api/v1/register/email_code")
@@ -63,12 +73,16 @@ public class AuthController {
         if (credential == null || credential.isEmpty()) {
             return Result.error(400, "请输入手机号/邮箱/用户名");
         }
-        if (password == null || password.isEmpty()) {
-            return Result.error(400, "请输入密码");
+
+        if ((password == null || password.isEmpty()) && (code == null || code.isEmpty())) {
+            return Result.error(400, "请输入密码或验证码");
+        }
+        if ((password != null && !password.isEmpty()) && (code != null && !code.isEmpty())) {
+            return Result.error(400, "密码和验证码只能选其一");
         }
 
         Map<String, Object> result = authService.login(credential, password, code);
-        return fromServiceResult(result);
+        return Result.ok(result);
     }
 
     @PostMapping("/api/v1/login/email_code")

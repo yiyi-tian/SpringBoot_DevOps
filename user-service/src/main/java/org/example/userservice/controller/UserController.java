@@ -145,4 +145,144 @@ public class UserController {
     public Map<String, Object> searchGroupPermissions(@RequestParam Map<String, Object> params) {
         return userService.searchGroupPermissions(params);
     }
+
+    // ==================== 用户自助服务 ====================
+
+    @PostMapping("/internal/user/password")
+    public Map<String, Object> changePassword(@RequestBody Map<String, Object> request) {
+        return userService.changePassword(request);
+    }
+
+    @PatchMapping("/internal/user/profile")
+    public Map<String, Object> updateProfile(@RequestBody Map<String, Object> request) {
+        return userService.updateProfile(request);
+    }
+
+    @PostMapping("/internal/user/password/reset")
+    public Map<String, Object> resetPassword(@RequestBody Map<String, Object> request) {
+        return userService.resetPassword(request);
+    }
+
+    @PostMapping("/internal/user/bind")
+    public Map<String, Object> bindCredential(@RequestBody Map<String, Object> request) {
+        return userService.bindCredential(request);
+    }
+
+    // ==================== 用户直接权限管理 ====================
+
+    @PostMapping("/internal/user-permission/create")
+    public Map<String, Object> createUserPermission(@RequestBody Map<String, Object> request) {
+        return userService.createUserPermission(request);
+    }
+
+    @DeleteMapping("/internal/user-permission/delete")
+    public Map<String, Object> deleteUserPermission(@RequestBody Map<String, Object> request) {
+        return userService.deleteUserPermission(request);
+    }
+
+    @PatchMapping("/internal/user-permission/update")
+    public Map<String, Object> updateUserPermission(@RequestBody Map<String, Object> request) {
+        return userService.updateUserPermission(request);
+    }
+
+    @GetMapping("/internal/user-permission/search")
+    public Map<String, Object> searchUserPermissions(@RequestParam Map<String, Object> params) {
+        return userService.searchUserPermissions(params);
+    }
+
+    // ==================== 权限申请与审批 ====================
+
+    @PostMapping("/internal/user-permission/apply")
+    public Map<String, Object> applyUserPermission(@RequestBody Map<String, Object> request) {
+        return userService.applyUserPermission(request);
+    }
+
+    @PostMapping("/internal/user-permission/approve")
+    public Map<String, Object> approveUserPermission(@RequestBody Map<String, Object> request) {
+        return userService.approveUserPermission(request);
+    }
+
+    @PostMapping("/internal/user-permission/reject")
+    public Map<String, Object> rejectUserPermission(@RequestBody Map<String, Object> request) {
+        return userService.rejectUserPermission(request);
+    }
+
+    @PostMapping("/internal/group-permission/apply")
+    public Map<String, Object> applyGroupPermission(@RequestBody Map<String, Object> request) {
+        return userService.applyGroupPermission(request);
+    }
+
+    @PostMapping("/internal/group-permission/approve")
+    public Map<String, Object> approveGroupPermission(@RequestBody Map<String, Object> request) {
+        return userService.approveGroupPermission(request);
+    }
+
+    @PostMapping("/internal/group-permission/reject")
+    public Map<String, Object> rejectGroupPermission(@RequestBody Map<String, Object> request) {
+        return userService.rejectGroupPermission(request);
+    }
+
+    // ==================== 自驱任务 ====================
+
+    @PostMapping("/internal/scheduler/expire-stale-auths")
+    public Map<String, Object> expireStaleAuths(@RequestBody Map<String, Object> request) {
+        int days = request.containsKey("days") ? Integer.parseInt(String.valueOf(request.get("days"))) : 14;
+        return userService.expireStaleAuths(days);
+    }
+
+    @PostMapping("/internal/scheduler/deactivate-inactive-users")
+    public Map<String, Object> deactivateInactiveUsers(@RequestBody Map<String, Object> request) {
+        int days = request.containsKey("days") ? Integer.parseInt(String.valueOf(request.get("days"))) : 30;
+        return userService.deactivateInactiveUsers(days);
+    }
+
+    @PostMapping("/internal/scheduler/purge-deregistered-users")
+    public Map<String, Object> purgeDeregisteredUsers(@RequestBody Map<String, Object> request) {
+        int days = request.containsKey("days") ? Integer.parseInt(String.valueOf(request.get("days"))) : 30;
+        return userService.purgeDeregisteredUsers(days);
+    }
+
+    @PostMapping("/internal/scheduler/clean-expired-caches")
+    public Map<String, Object> cleanExpiredCaches() {
+        return userService.cleanExpiredCaches();
+    }
+
+    @PostMapping("/internal/scheduler/clean-expired-data")
+    public Map<String, Object> cleanExpiredData(@RequestBody Map<String, Object> request) {
+        int days = request.containsKey("days") ? Integer.parseInt(String.valueOf(request.get("days"))) : 90;
+        return userService.cleanExpiredData(days);
+    }
+
+    // ==================== v0.4.0: IP 突变检测 & 多端会话管理 ====================
+
+    @PostMapping("/internal/user/login-history/scan")
+    public Map<String, Object> scanIpMutations(@RequestBody Map<String, Object> request) {
+        return userService.scanIpMutations(request);
+    }
+
+    @PostMapping("/internal/user/session")
+    public Map<String, Object> registerSession(@RequestBody Map<String, Object> request) {
+        return userService.registerSession(request);
+    }
+
+    @GetMapping("/internal/user/{userId}/sessions")
+    public Map<String, Object> getUserSessions(@PathVariable Long userId) {
+        return userService.getUserSessions(userId);
+    }
+
+    @DeleteMapping("/internal/user/sessions/{sessionId}")
+    public Map<String, Object> terminateSession(@PathVariable String sessionId) {
+        return userService.terminateSession(sessionId);
+    }
+
+    @DeleteMapping("/internal/user/{userId}/sessions/others")
+    public Map<String, Object> terminateOtherSessions(@PathVariable Long userId, @RequestBody Map<String, Object> request) {
+        String currentSessionId = (String) request.get("currentSessionId");
+        return userService.terminateOtherSessions(userId, currentSessionId);
+    }
+
+    @PostMapping("/internal/user/sessions/clean-stale")
+    public Map<String, Object> cleanStaleSessions(@RequestBody Map<String, Object> request) {
+        return userService.cleanStaleSessions(request);
+    }
 }

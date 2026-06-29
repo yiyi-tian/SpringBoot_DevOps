@@ -17,9 +17,13 @@ public class User {
 
     private Integer sex;            // 性别（可选）
 
-    private String status;          // ACTIVE / LOCKED / DEREGISTERED
+    private String status;          // ACTIVE / LOCKED / DEREGISTERED / EXPIRED / INACTIVE
 
     private Integer isDeleted;      // 逻辑删除 0/1
+
+    private LocalDateTime lastLoginAt;   // 最后登录时间，用于活跃度检测
+
+    private String lastLoginIp;          // 最后登录IP（v4/v6），用于IP突变检测
 
     private LocalDateTime createdAt;
 
