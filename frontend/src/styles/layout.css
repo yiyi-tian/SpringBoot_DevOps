@@ -933,6 +933,63 @@
   min-width: 160px;
 }
 
+.log-export-row {
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.log-export-format {
+  flex: 0 0 auto;
+  min-width: 120px;
+}
+
+.log-export-hint {
+  margin: 4px 0 12px;
+}
+
+.log-export-status {
+  margin-bottom: 12px;
+}
+
+.log-threshold-section {
+  margin-top: 16px;
+}
+
+.log-threshold-table .log-threshold-value {
+  width: 120px;
+}
+
+.log-threshold-table .log-threshold-severity {
+  width: 100px;
+}
+
+.log-threshold-msg {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.log-threshold-ok {
+  color: var(--accent-green, #4ade80);
+}
+
+.admin-overview {
+  max-width: 56rem;
+}
+
+.admin-section-hint {
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.admin-rbac-banner {
+  margin-bottom: 12px;
+}
+
+.admin-carrier-form {
+  margin-bottom: 8px;
+}
+
 @media (max-width: 720px) {
   .home-dl {
     grid-template-columns: 1fr;

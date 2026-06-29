@@ -444,8 +444,12 @@ export const ENDPOINTS = [
     status: 'done',
     auth: 'admin',
     bodyExample: {
-      format: 'json',
-      filters: []
+      format: 'csv',
+      time_range: '24h',
+      filters: { service_names: ['topbiz'] },
+      sort: { field: 'timestamp', order: 'desc' },
+      page: 1,
+      size: 10000
     },
   },
   {
@@ -468,8 +472,9 @@ export const ENDPOINTS = [
     status: 'done',
     auth: 'admin',
     bodyExample: {
-      errorRateThreshold: 0.05,
-      p99ThresholdMs: 500
+      config_key: 'error_rate_max',
+      threshold_value: 0.05,
+      severity: 'WARN'
     },
   },
 

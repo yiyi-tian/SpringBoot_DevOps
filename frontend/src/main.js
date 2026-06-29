@@ -2,7 +2,7 @@ import './styles/glass.css';
 import './styles/layout.css';
 import './styles/auth-portal.css';
 
-import { DOMAINS, getEndpointsByDomain, getEndpointsByGroup } from './api/endpoints.js';
+import { DOMAINS, getEndpointsByDomain } from './api/endpoints.js';
 import { refreshSession } from './api/client.js';
 import {
   initShell,
@@ -12,11 +12,12 @@ import {
   setResponsePanelVisible,
   setSplitLayout,
 } from './ui/shell.js';
-import { renderEndpointList, renderEndpointSections } from './ui/forms.js';
+import { renderEndpointList } from './ui/forms.js';
 import { renderAuthPortal } from './ui/auth-portal.js';
 import { renderHomeOverview } from './ui/home-overview.js';
 import { renderMessageOverview } from './ui/message-overview.js';
 import { renderLogOverview } from './ui/log-overview.js';
+import { renderAdminOverview } from './ui/admin-overview.js';
 
 const DOMAIN_META = {
   auth: {
@@ -39,18 +40,20 @@ const DOMAIN_META = {
   },
 };
 
-const SPLIT_LAYOUT_DOMAINS = new Set(['auth', 'message', 'log']);
+const SPLIT_LAYOUT_DOMAINS = new Set(['auth', 'message', 'log', 'admin']);
 
 const OVERVIEW_RENDERERS = {
   auth: (el) => renderHomeOverview(el),
   message: (el) => renderMessageOverview(el),
   log: (el) => renderLogOverview(el),
+  admin: (el) => renderAdminOverview(el),
 };
 
 const OVERVIEW_MOUNT_IDS = {
   auth: 'home-overview',
   message: 'message-overview',
   log: 'log-overview',
+  admin: 'admin-overview',
 };
 
 function renderPanelHeader(meta, endpointCount) {
@@ -98,25 +101,6 @@ function renderPanel(domainId) {
   main.innerHTML = `${renderPanelHeader(meta, endpoints.length)}<div id="endpoint-container"></div>`;
 
   const container = main.querySelector('#endpoint-container');
-
-  if (domainId === 'admin') {
-    const msgResource = getEndpointsByGroup('admin', 'message-resource');
-    const rbac = endpoints.filter((e) => e.group !== 'message-resource');
-    renderEndpointSections(container, [
-      {
-        title: '消息资源管理',
-        hint: '以下接口仅需登录（authc），用于维护模板状态、变量与载体。',
-        endpoints: msgResource,
-      },
-      {
-        title: '用户与权限 RBAC',
-        hint: '以下接口路径为 /api/v1/admin/**，需要 admin 角色。',
-        adminBanner: true,
-        endpoints: rbac,
-      },
-    ]);
-    return;
-  }
 
   if (meta.admin) {
     const banner = document.createElement('div');

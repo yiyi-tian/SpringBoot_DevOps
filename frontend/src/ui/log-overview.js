@@ -1,4 +1,5 @@
 import { session, subscribe, apiRequest } from '../api/client.js';
+import { downloadTextFile, exportFormatMime, timestampForFilename } from '../api/download.js';
 import { prefillEndpointCard } from './forms.js';
 import {
   TIME_RANGES,
@@ -16,6 +17,8 @@ import {
   createDefaultMetricState,
   createDefaultAuditFilterState,
   buildOpsQueryBody,
+  buildOpsExportBody,
+  OPS_EXPORT_MAX_SIZE,
   buildMetricQueryParams,
   buildAuditQueryParams,
   summarizeActiveFilters,
@@ -27,6 +30,25 @@ import {
 } from '../api/log-query-spec.js';
 
 const TAB_IDS = ['ops', 'audit', 'metrics'];
+
+const EXPORT_FORMATS = [
+  { id: 'csv', label: 'CSV' },
+  { id: 'json', label: 'JSON' },
+  { id: 'txt', label: 'TXT' },
+];
+
+/** @type {'csv'|'json'|'txt'} */
+let opsExportFormat = 'csv';
+
+/** @type {Record<string, string>} */
+const THRESHOLD_KEY_LABELS = {
+  error_rate_max: '错误率上限',
+  p99_max: 'P99 耗时上限 (ms)',
+  success_rate_min: '成功率下限',
+  slow_count_max: '慢请求数上限',
+};
+
+const THRESHOLD_SEVERITIES = ['WARN', 'NORMAL'];
 
 /** @type {ReturnType<typeof createDefaultOpsState> | null} */
 let opsState = null;
@@ -194,6 +216,21 @@ function renderOpsPanel(panel) {
         <button type="button" class="btn btn-sm btn-ghost" id="log-ops-reset">重置条件</button>
       </div>
 
+      <h2 class="home-card-title">导出日志</h2>
+      <div class="home-action-row log-export-row">
+        <div class="log-inline-field log-export-format">
+          <label class="label">格式</label>
+          <select class="input input-sm" id="log-export-format">
+            ${EXPORT_FORMATS.map(
+              (f) => `<option value="${f.id}"${opsExportFormat === f.id ? ' selected' : ''}>${f.label}</option>`
+            ).join('')}
+          </select>
+        </div>
+        <button type="button" class="btn btn-sm btn-ghost" id="log-ops-export">导出</button>
+      </div>
+      <p class="home-muted log-export-hint">按当前筛选条件导出，单次最多 ${OPS_EXPORT_MAX_SIZE.toLocaleString()} 条；超出时结果会截断。</p>
+      <div id="log-export-status"></div>
+
       <div id="log-ops-results"></div>
     </section>
   `;
@@ -261,6 +298,12 @@ function renderOpsPanel(panel) {
   });
 
   panel.querySelector('#log-ops-search')?.addEventListener('click', () => runOpsSearch(panel));
+
+  panel.querySelector('#log-export-format')?.addEventListener('change', (e) => {
+    opsExportFormat = e.target.value;
+  });
+
+  panel.querySelector('#log-ops-export')?.addEventListener('click', () => runOpsExport(panel));
 }
 
 /** @param {HTMLElement} panel @param {ReturnType<typeof createDefaultOpsState>} state */
@@ -377,6 +420,47 @@ async function runOpsSearch(panel) {
     });
   } catch (err) {
     resultsEl.innerHTML = `<p class="home-card-err">${esc(err.message || String(err))}</p>`;
+  }
+}
+
+/** @param {HTMLElement} panel */
+async function runOpsExport(panel) {
+  const state = opsState;
+  const format = opsExportFormat;
+  const body = buildOpsExportBody(state, format);
+  const statusEl = panel.querySelector('#log-export-status');
+  const exportBtn = panel.querySelector('#log-ops-export');
+
+  if (statusEl) statusEl.innerHTML = '<div class="home-overview-loading">导出中…</div>';
+  if (exportBtn) exportBtn.disabled = true;
+
+  prefillEndpointCard('log-export', body);
+
+  try {
+    const res = await apiRequest('POST', '/api/v1/log/ops/export', { body });
+    const data = res.data?.code === 0 ? res.data.data : null;
+
+    if (!data) {
+      if (statusEl) statusEl.innerHTML = `<p class="home-card-err">${esc(res.data?.message || '导出失败')}</p>`;
+      return;
+    }
+
+    const content = data.content ?? '';
+    const ext = data.format || format;
+    const filename = `ops-logs-${timestampForFilename()}.${ext}`;
+    downloadTextFile(content, filename, exportFormatMime(ext));
+
+    const count = data.count ?? 0;
+    const total = data.total ?? count;
+    let msg = `已导出 ${count.toLocaleString()} 条（${ext.toUpperCase()}）`;
+    if (data.truncated) {
+      msg += ` · <span class="home-card-err">结果已截断，匹配共 ${Number(total).toLocaleString()} 条</span>`;
+    }
+    if (statusEl) statusEl.innerHTML = `<p class="home-muted log-export-status">${msg}</p>`;
+  } catch (err) {
+    if (statusEl) statusEl.innerHTML = `<p class="home-card-err">${esc(err.message || String(err))}</p>`;
+  } finally {
+    if (exportBtn) exportBtn.disabled = false;
   }
 }
 
@@ -502,15 +586,25 @@ function renderAuditPanel(panel) {
 /** @param {HTMLElement} panel */
 function renderMetricsPanel(panel) {
   const state = metricState;
-  draw();
 
-  function draw() {
+  panel.innerHTML = `
+    <div id="metric-query-wrap"></div>
+    <div id="metric-threshold-wrap"></div>
+  `;
+
+  const queryWrap = panel.querySelector('#metric-query-wrap');
+  const thresholdWrap = panel.querySelector('#metric-threshold-wrap');
+
+  drawQuerySection(queryWrap);
+  renderMetricsThresholdSection(thresholdWrap);
+
+  function drawQuerySection(target) {
     const metricDef = getMetricDef(state.selectedMetric);
     const isRank = RANK_METRICS.has(state.selectedMetric);
     const isQps = state.selectedMetric === 'qps';
     const canAggregate = AGGREGATE_METRICS.has(state.selectedMetric);
 
-    panel.innerHTML = `
+    target.innerHTML = `
       <section class="home-card glass msg-panel">
         <p class="log-metric-intro home-muted">
           基于 ClickHouse <strong>访问日志</strong>（非审计日志）的聚合统计。7 天/30 天长区间建议使用 <code>aggregate</code> 数据源。
@@ -603,38 +697,38 @@ function renderMetricsPanel(panel) {
       </section>
     `;
 
-    bindTimeRangeControls(panel, state, 'metric', () => draw());
+    bindTimeRangeControls(target, state, 'metric', () => drawQuerySection(target));
 
-    panel.querySelector('#metric-source')?.addEventListener('change', (e) => {
+    target.querySelector('#metric-source')?.addEventListener('change', (e) => {
       state.source = e.target.value;
     });
-    panel.querySelector('#metric-service')?.addEventListener('change', (e) => {
+    target.querySelector('#metric-service')?.addEventListener('change', (e) => {
       state.serviceName = e.target.value;
     });
-    panel.querySelector('#metric-api')?.addEventListener('input', (e) => {
+    target.querySelector('#metric-api')?.addEventListener('input', (e) => {
       state.apiPrefix = e.target.value;
     });
-    panel.querySelector('#metric-interval')?.addEventListener('input', (e) => {
+    target.querySelector('#metric-interval')?.addEventListener('input', (e) => {
       state.interval = Number(e.target.value) || 60;
     });
 
-    panel.querySelectorAll('.log-metric-chip').forEach((btn) => {
+    target.querySelectorAll('.log-metric-chip').forEach((btn) => {
       btn.addEventListener('click', () => {
         state.selectedMetric = btn.dataset.metric;
         state.source = suggestMetricSource(state.selectedMetric, state.timeRange, state.source);
-        draw();
+        drawQuerySection(target);
       });
     });
 
-    panel.querySelector('#metric-topn')?.addEventListener('input', (e) => {
+    target.querySelector('#metric-topn')?.addEventListener('input', (e) => {
       state.topN = Number(e.target.value) || 10;
     });
 
-    panel.querySelector('#metric-query-btn')?.addEventListener('click', () => runMetricQuery(panel));
+    target.querySelector('#metric-query-btn')?.addEventListener('click', () => runMetricQuery(target));
   }
 
-  async function runMetricQuery(panel) {
-    const resultEl = panel.querySelector('#metric-result');
+  async function runMetricQuery(queryRoot) {
+    const resultEl = queryRoot.querySelector('#metric-result');
     resultEl.innerHTML = '<div class="home-overview-loading">查询中…</div>';
 
     const metricDef = getMetricDef(state.selectedMetric);
@@ -705,6 +799,146 @@ function renderMetricsPanel(panel) {
     } catch (err) {
       resultEl.innerHTML = `<p class="home-card-err">${esc(err.message || String(err))}</p>`;
     }
+  }
+}
+
+/** @param {HTMLElement} wrap */
+function renderMetricsThresholdSection(wrap) {
+  wrap.innerHTML = `
+    <section class="home-card glass msg-panel log-threshold-section">
+      <h2 class="home-card-title">告警阈值配置</h2>
+      <p class="home-muted">供指标监控与 WebSocket 告警判定使用；修改后即时生效。</p>
+      <div id="metric-threshold-content"><div class="home-overview-loading">加载中…</div></div>
+    </section>
+  `;
+
+  prefillEndpointCard('log-metrics-config-get');
+  loadMetricsThresholdConfig(wrap);
+}
+
+/** @param {HTMLElement} wrap */
+async function loadMetricsThresholdConfig(wrap) {
+  const contentEl = wrap.querySelector('#metric-threshold-content');
+  if (!contentEl) return;
+
+  contentEl.innerHTML = '<div class="home-overview-loading">加载中…</div>';
+
+  try {
+    const res = await apiRequest('GET', '/api/v1/log/metrics/config');
+    const data = res.data?.code === 0 ? res.data.data : null;
+
+    if (!data) {
+      contentEl.innerHTML = `
+        <p class="home-card-err">${esc(res.data?.message || '无法加载阈值配置')}</p>
+        <button type="button" class="btn btn-sm btn-ghost" id="metric-threshold-retry">重试</button>
+      `;
+      contentEl.querySelector('#metric-threshold-retry')?.addEventListener('click', () => loadMetricsThresholdConfig(wrap));
+      return;
+    }
+
+    const configs = data.configs || [];
+    if (configs.length === 0) {
+      contentEl.innerHTML = '<p class="home-muted">暂无阈值配置项。</p>';
+      return;
+    }
+
+    contentEl.innerHTML = `
+      <div class="msg-table-wrap">
+        <table class="msg-table log-threshold-table">
+          <thead>
+            <tr>
+              <th>配置项</th>
+              <th>阈值</th>
+              <th>严重级别</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${configs
+              .map((row) => {
+                const key = row.config_key ?? row.configKey ?? '';
+                const label = THRESHOLD_KEY_LABELS[key] ?? key;
+                const value = row.threshold_value ?? row.thresholdValue ?? '';
+                const severity = row.severity ?? 'WARN';
+                return `
+              <tr data-config-key="${escAttr(key)}">
+                <td>
+                  <strong>${esc(label)}</strong>
+                  <br /><code class="log-cell-mono">${esc(key)}</code>
+                </td>
+                <td>
+                  <input class="input input-sm log-threshold-value" type="number" step="any"
+                    value="${escAttr(String(value))}" data-key="${escAttr(key)}" />
+                </td>
+                <td>
+                  <select class="input input-sm log-threshold-severity" data-key="${escAttr(key)}">
+                    ${THRESHOLD_SEVERITIES.map(
+                      (s) => `<option value="${s}"${severity === s ? ' selected' : ''}>${s}</option>`
+                    ).join('')}
+                  </select>
+                </td>
+                <td>
+                  <button type="button" class="btn btn-sm btn-ghost log-threshold-save" data-key="${escAttr(key)}">保存</button>
+                  <span class="log-threshold-msg home-muted" data-key="${escAttr(key)}"></span>
+                </td>
+              </tr>`;
+              })
+              .join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    contentEl.querySelectorAll('.log-threshold-save').forEach((btn) => {
+      btn.addEventListener('click', () => saveMetricsThreshold(wrap, btn.dataset.key));
+    });
+  } catch (err) {
+    contentEl.innerHTML = `
+      <p class="home-card-err">${esc(err.message || String(err))}</p>
+      <button type="button" class="btn btn-sm btn-ghost" id="metric-threshold-retry">重试</button>
+    `;
+    contentEl.querySelector('#metric-threshold-retry')?.addEventListener('click', () => loadMetricsThresholdConfig(wrap));
+  }
+}
+
+/** @param {HTMLElement} wrap @param {string} configKey */
+async function saveMetricsThreshold(wrap, configKey) {
+  const contentEl = wrap.querySelector('#metric-threshold-content');
+  if (!contentEl || !configKey) return;
+
+  const valueInput = contentEl.querySelector(`.log-threshold-value[data-key="${configKey}"]`);
+  const severitySelect = contentEl.querySelector(`.log-threshold-severity[data-key="${configKey}"]`);
+  const msgEl = contentEl.querySelector(`.log-threshold-msg[data-key="${configKey}"]`);
+  const saveBtn = contentEl.querySelector(`.log-threshold-save[data-key="${configKey}"]`);
+
+  const thresholdValue = Number(valueInput?.value);
+  if (valueInput && (valueInput.value === '' || Number.isNaN(thresholdValue))) {
+    if (msgEl) msgEl.innerHTML = '<span class="home-card-err">请输入有效数值</span>';
+    return;
+  }
+
+  const body = {
+    config_key: configKey,
+    threshold_value: thresholdValue,
+    severity: severitySelect?.value ?? 'WARN',
+  };
+
+  if (saveBtn) saveBtn.disabled = true;
+  if (msgEl) msgEl.textContent = '保存中…';
+
+  prefillEndpointCard('log-metrics-config-put', body);
+
+  try {
+    const res = await apiRequest('PUT', '/api/v1/log/metrics/config', { body });
+    if (res.data?.code === 0) {
+      if (msgEl) msgEl.innerHTML = '<span class="log-threshold-ok">已保存</span>';
+    } else {
+      if (msgEl) msgEl.innerHTML = `<span class="home-card-err">${esc(res.data?.message || '保存失败')}</span>`;
+    }
+  } catch (err) {
+    if (msgEl) msgEl.innerHTML = `<span class="home-card-err">${esc(err.message || String(err))}</span>`;
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
   }
 }
 

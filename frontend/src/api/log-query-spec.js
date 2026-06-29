@@ -538,6 +538,22 @@ export function buildOpsQueryBody(state) {
   return body;
 }
 
+/** Max rows per export request (matches log-service EXPORT_MAX_SIZE). */
+export const OPS_EXPORT_MAX_SIZE = 10_000;
+
+/**
+ * @param {ReturnType<typeof createDefaultOpsState>} state
+ * @param {'csv'|'json'|'txt'} [format]
+ */
+export function buildOpsExportBody(state, format = 'csv') {
+  return {
+    ...buildOpsQueryBody(state),
+    format,
+    page: 1,
+    size: OPS_EXPORT_MAX_SIZE,
+  };
+}
+
 /**
  * Human-readable summary tags for active filters.
  * @param {ReturnType<typeof createDefaultOpsState>} state
