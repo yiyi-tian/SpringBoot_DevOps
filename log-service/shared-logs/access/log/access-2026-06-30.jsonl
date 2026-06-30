@@ -7,3 +7,5 @@
 {"method":"POST","uri":"/internal/log/record","timestamp":1782762074879,"level":"INFO","trace_id":"ab16af26-b6cb-405d-8b0e-724628fdec2a","service_name":"log","client_ip":"127.0.0.1","cost_ms":3628,"http_status":200,"biz_code":"0"}
 {"method":"POST","uri":"/internal/log/record","timestamp":1782762539905,"level":"INFO","trace_id":"7501f8ea-f404-46fa-ba8e-1d9f1aae604f","service_name":"log","client_ip":"127.0.0.1","cost_ms":2061,"http_status":200,"biz_code":"0"}
 {"method":"POST","uri":"/internal/log/record","timestamp":1782762974059,"level":"INFO","trace_id":"fb7cff56-1d27-4646-9bc6-d5fa8d7ddc44","service_name":"log","client_ip":"127.0.0.1","cost_ms":1664,"http_status":200,"biz_code":"0"}
+{"method":"POST","uri":"/internal/log/record","timestamp":1782811068137,"level":"INFO","trace_id":"6faee143-6657-4a1d-90fa-84f2e5d72db3","service_name":"log","client_ip":"127.0.0.1","cost_ms":10236,"http_status":200,"biz_code":"0"}
+{"method":"POST","uri":"/internal/log/record","timestamp":1782811209066,"level":"INFO","trace_id":"af16be7f-f69d-40ab-a9c2-18e0d99acd48","service_name":"log","client_ip":"127.0.0.1","cost_ms":174,"http_status":200,"biz_code":"0"}

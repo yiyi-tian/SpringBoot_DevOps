@@ -98,6 +98,19 @@ public class UserService {
         user.setUpdatedAt(LocalDateTime.now());
         userMapper.insert(user);
 
+        // 给新用户自动分配 user 权限
+        QueryWrapper<Permission> permWrapper = new QueryWrapper<>();
+        permWrapper.eq("perm_code", "user");
+        Permission userPerm = permissionMapper.selectOne(permWrapper);
+        if (userPerm != null) {
+            UserPermission up = new UserPermission();
+            up.setUserId(user.getUserId());
+            up.setPermId(userPerm.getPermId());
+            up.setStatus("ACTIVE");
+            up.setCreatedAt(LocalDateTime.now());
+            userPermissionMapper.insert(up);
+        }
+
         UserAuth userAuth = new UserAuth();
         userAuth.setUserId(user.getUserId());
         userAuth.setIdentityType(credentialType);
@@ -471,7 +484,7 @@ public class UserService {
         Map<String, Object> result = new HashMap<>();
         Set<String> permCodes = new LinkedHashSet<>();
 
-        // 1. 直接权限（仅聚合 status=ACTIVE 的授权记录）
+        // 1. 直接权限
         QueryWrapper<UserPermission> upWrapper = new QueryWrapper<>();
         upWrapper.eq("user_id", userId);
         upWrapper.eq("status", "ACTIVE");
@@ -482,7 +495,7 @@ public class UserService {
             }
         }
 
-        // 2. 通过分组的权限（仅聚合 status=ACTIVE 的授权记录）
+        // 2. 通过分组的权限
         QueryWrapper<UserGroup> ugWrapper = new QueryWrapper<>();
         ugWrapper.eq("user_id", userId);
         for (UserGroup ug : userGroupMapper.selectList(ugWrapper)) {
@@ -497,14 +510,23 @@ public class UserService {
             }
         }
 
+        // 3. 根据权限推导角色
+        List<String> roles = new ArrayList<>();
+        if (permCodes.contains("*") || permCodes.contains("admin")) {
+            roles.add("admin");
+        } else {
+            roles.add("user");
+        }
+
         result.put("code", 0);
         result.put("message", "ok");
         Map<String, Object> data = new HashMap<>();
         data.put("permissions", new ArrayList<>(permCodes));
+        data.put("roles", roles);
         result.put("data", data);
         return result;
     }
-
+    
     /**
      * 查询用户所属分组
      */
