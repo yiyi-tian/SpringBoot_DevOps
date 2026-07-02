@@ -1,15 +1,17 @@
 package org.example.topbiz.config;
 
+import jakarta.servlet.Filter;
 import org.apache.shiro.authc.Authenticator;
 import org.apache.shiro.authc.pam.ModularRealmAuthenticator;
 import org.apache.shiro.authz.Authorizer;
 import org.apache.shiro.authz.ModularRealmAuthorizer;
-import org.apache.shiro.spring.web.config.DefaultShiroFilterChainDefinition;
-import org.apache.shiro.spring.web.config.ShiroFilterChainDefinition;
+import org.apache.shiro.spring.web.ShiroFilterFactoryBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Configuration
 public class ShiroConfig {
@@ -29,23 +31,32 @@ public class ShiroConfig {
     }
 
     @Bean
-    public ShiroFilterChainDefinition shiroFilterChainDefinition() {
-        DefaultShiroFilterChainDefinition chain = new DefaultShiroFilterChainDefinition();
-        chain.addPathDefinition("/api/v1/register", "anon");
-        chain.addPathDefinition("/api/v1/login", "anon");
-        chain.addPathDefinition("/api/v1/password/reset/**", "anon");
-        chain.addPathDefinition("/api/v1/admin/**", "roles[admin]");
-        chain.addPathDefinition("/api/v1/log/**", "roles[admin]");
-        chain.addPathDefinition("/api/v1/templates/**", "roles[admin]");
-        chain.addPathDefinition("/api/v1/variables/**", "roles[admin]");
-        chain.addPathDefinition("/api/v1/msg/carriers/**", "roles[admin]");
+    public ShiroFilterFactoryBean shiroFilterFactoryBean(org.apache.shiro.mgt.SecurityManager securityManager) {
+        ShiroFilterFactoryBean factoryBean = new ShiroFilterFactoryBean();
+        factoryBean.setSecurityManager(securityManager);
 
-        // 普通用户可访问
-        chain.addPathDefinition("/api/v1/send/**", "authc");
-        chain.addPathDefinition("/api/v1/messages/**", "authc");
+        // 注册自定义过滤器，覆盖默认的 roles
+        Map<String, Filter> filters = new LinkedHashMap<>();
+        filters.put("roles", new CustomRolesFilter());
+        factoryBean.setFilters(filters);
 
-        // 兜底
-        chain.addPathDefinition("/api/v1/**", "authc");
-        return chain;
+        // 过滤器链
+        Map<String, String> chain = new LinkedHashMap<>();
+        chain.put("/api/v1/register", "anon");
+        chain.put("/api/v1/login", "anon");
+        chain.put("/api/v1/password/reset/**", "anon");
+
+        chain.put("/api/v1/admin/**", "roles[admin]");
+        chain.put("/api/v1/log/**", "roles[admin]");
+        chain.put("/api/v1/templates/**", "roles[admin]");
+        chain.put("/api/v1/variables/**", "roles[admin]");
+        chain.put("/api/v1/msg/carriers/**", "roles[admin]");
+
+        chain.put("/api/v1/send/**", "authc");
+        chain.put("/api/v1/messages/**", "authc");
+        chain.put("/api/v1/**", "authc");
+
+        factoryBean.setFilterChainDefinitionMap(chain);
+        return factoryBean;
     }
 }
