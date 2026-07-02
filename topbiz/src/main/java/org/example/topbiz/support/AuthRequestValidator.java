@@ -16,9 +16,6 @@ public final class AuthRequestValidator {
     public static final String PHONE_SMS_NOT_CONNECTED =
             "未接入第三方短信平台，手机验证码仅支持格式校验，请使用邮箱注册/登录或手机号+密码";
 
-    public static final String REGISTER_CODE_NEEDS_PASSWORD =
-            "验证码注册须设置密码，请同时提交 password";
-
     private AuthRequestValidator() {
     }
 
@@ -39,6 +36,7 @@ public final class AuthRequestValidator {
 
         AuthRequestPhase phase = CredentialValidator.resolvePhase(request);
 
+        // 短信验证码未接入
         if (type == CredentialType.PHONE && phase == AuthRequestPhase.SEND_CODE) {
             return Optional.of(PHONE_SMS_NOT_CONNECTED);
         }
@@ -46,10 +44,17 @@ public final class AuthRequestValidator {
             return Optional.of(PHONE_SMS_NOT_CONNECTED);
         }
 
-        if (phase == AuthRequestPhase.PASSWORD_WITH_CODE) {
-            if (type != CredentialType.EMAIL) {
-                return Optional.of("仅邮箱注册支持验证码与密码组合");
+        // 验证码注册：不需要密码，只需 code
+        if (phase == AuthRequestPhase.CODE_AUTH) {
+            String code = String.valueOf(request.get("code")).trim();
+            if (code.isEmpty()) {
+                return Optional.of("验证码不能为空");
             }
+            return Optional.empty();
+        }
+
+        // 密码注册：需要密码
+        if (phase == AuthRequestPhase.PASSWORD_AUTH) {
             String password = String.valueOf(request.get("password")).trim();
             if (password.length() < 6) {
                 return Optional.of("密码长度不能少于6位");
@@ -57,23 +62,12 @@ public final class AuthRequestValidator {
             return Optional.empty();
         }
 
-        if (phase == AuthRequestPhase.CODE_AUTH) {
-            if (type == CredentialType.EMAIL) {
-                return Optional.of(REGISTER_CODE_NEEDS_PASSWORD);
-            }
-            return Optional.empty();
-        }
-
+        // 发码：不需要额外校验
         if (phase == AuthRequestPhase.SEND_CODE) {
             return Optional.empty();
         }
 
-        // PASSWORD_AUTH
-        String password = String.valueOf(request.get("password")).trim();
-        if (password.length() < 6) {
-            return Optional.of("密码长度不能少于6位");
-        }
-        return Optional.empty();
+        return Optional.of("请求参数异常，请检查 password 或 code");
     }
 
     public static Optional<String> validateUnifiedLogin(Map<String, Object> request) {
@@ -97,18 +91,30 @@ public final class AuthRequestValidator {
             return Optional.of(PHONE_SMS_NOT_CONNECTED);
         }
 
-        if (phase == AuthRequestPhase.PASSWORD_WITH_CODE) {
-            return Optional.of("登录不支持同时提交 password 与 code，请二选一");
+        // 验证码登录：只需 code
+        if (phase == AuthRequestPhase.CODE_AUTH) {
+            String code = String.valueOf(request.get("code")).trim();
+            if (code.isEmpty()) {
+                return Optional.of("验证码不能为空");
+            }
+            return Optional.empty();
         }
 
+        // 密码登录：需要密码
         if (phase == AuthRequestPhase.PASSWORD_AUTH) {
             String password = String.valueOf(request.get("password")).trim();
             if (password.length() < 6) {
                 return Optional.of("密码长度不能少于6位");
             }
+            return Optional.empty();
         }
 
-        return Optional.empty();
+        // 发码：不需要额外校验
+        if (phase == AuthRequestPhase.SEND_CODE) {
+            return Optional.empty();
+        }
+
+        return Optional.of("请求参数异常，请检查 password 或 code");
     }
 
     public static int httpCodeForError(String message) {

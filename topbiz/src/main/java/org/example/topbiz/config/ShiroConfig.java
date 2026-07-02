@@ -46,10 +46,19 @@ public class ShiroConfig {
         chain.put("/api/v1/login", "anon");
         chain.put("/api/v1/password/reset/**", "anon");
 
+        // 管理员接口
         chain.put("/api/v1/admin/**", "roles[admin]");
         chain.put("/api/v1/log/**", "roles[admin]");
-        chain.put("/api/v1/templates/**", "roles[admin]");
-        chain.put("/api/v1/variables/**", "roles[admin]");
+
+        // 模板：管理员可读写，普通用户只读
+        chain.put("/api/v1/templates", "authc");                 // GET 查列表
+        chain.put("/api/v1/templates/**", "roles[admin]");       // POST/PUT/DELETE
+
+        // 变量：管理员可读写，普通用户只读
+        chain.put("/api/v1/variables", "authc");                  // GET 查列表
+        chain.put("/api/v1/variables/**", "roles[admin]");        // POST/PUT/DELETE
+
+        // 载体：仅管理员
         chain.put("/api/v1/msg/carriers/**", "roles[admin]");
 
         chain.put("/api/v1/send/**", "authc");

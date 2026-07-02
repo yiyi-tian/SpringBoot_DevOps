@@ -50,8 +50,6 @@ export function renderAuthPortal(container) {
           <span class="auth-step-dot active" data-step="email">1</span>
           <span class="auth-step-line"></span>
           <span class="auth-step-dot" data-step="code">2</span>
-          <span class="auth-step-line"></span>
-          <span class="auth-step-dot" data-step="setPassword">3</span>
         </div>
         <p class="auth-step-label auth-hidden" id="auth-step-label"></p>
 
@@ -70,10 +68,8 @@ export function renderAuthPortal(container) {
 }
 
 function bindAuthPortal(container) {
-  /** @type {'login'|'register'|'reset'} */
   let intent = 'login';
   let mode = 'password';
-  /** @type {'email'|'code'|'setPassword'} */
   let wizardStep = 'email';
   let countdownTimer = null;
   let pendingEmail = '';
@@ -133,28 +129,16 @@ function bindAuthPortal(container) {
   }
 
   function validateEmail(email) {
-    if (!email) {
-      showStatus('请输入邮箱', 'err');
-      return false;
-    }
-    if (!EMAIL_RE.test(email)) {
-      showStatus('邮箱格式无效', 'err');
-      return false;
-    }
+    if (!email) { showStatus('请输入邮箱', 'err'); return false; }
+    if (!EMAIL_RE.test(email)) { showStatus('邮箱格式无效', 'err'); return false; }
     return true;
   }
 
   function validatePasswordPair(pwdEl, confirmEl, requireConfirm) {
     const password = pwdEl?.value ?? '';
     const confirm = confirmEl?.value ?? '';
-    if (!password || password.length < 6) {
-      showStatus('密码长度不能少于 6 位', 'err');
-      return null;
-    }
-    if (requireConfirm && password !== confirm) {
-      showStatus('两次输入的密码不一致', 'err');
-      return null;
-    }
+    if (!password || password.length < 6) { showStatus('密码长度不能少于 6 位', 'err'); return null; }
+    if (requireConfirm && password !== confirm) { showStatus('两次输入的密码不一致', 'err'); return null; }
     return password;
   }
 
@@ -164,39 +148,27 @@ function bindAuthPortal(container) {
     modeSwitch.classList.toggle('auth-hidden', isReset);
     backLoginWrap.classList.toggle('auth-hidden', !isReset);
     titleEl.textContent = isReset ? '重置密码' : '欢迎';
-    subEl.textContent = isReset
-      ? '通过邮箱验证码设置新密码'
-      : '邮箱登录或注册 DevOps 平台';
+    subEl.textContent = isReset ? '通过邮箱验证码设置新密码' : '邮箱登录或注册 DevOps 平台';
   }
 
   function updateStepIndicator() {
-    const showSteps =
-      (intent === 'register' && mode === 'code') || intent === 'reset';
+    const showSteps = (intent === 'register' && mode === 'code') || intent === 'reset';
     stepsEl.classList.toggle('auth-hidden', !showSteps);
     stepsEl.setAttribute('aria-hidden', showSteps ? 'false' : 'true');
     stepLabelEl.classList.toggle('auth-hidden', !showSteps);
 
     if (!showSteps) return;
 
-    const labels =
-      intent === 'reset'
-        ? {
-            email: '步骤 1：输入邮箱并获取验证码',
-            code: '步骤 2：填写邮箱验证码',
-            setPassword: '步骤 3：设置新密码',
-          }
-        : {
-            email: '步骤 1：输入邮箱并获取验证码',
-            code: '步骤 2：填写邮箱验证码',
-            setPassword: '步骤 3：设置登录密码',
-          };
+    const labels = intent === 'reset'
+      ? { email: '步骤 1：输入邮箱并获取验证码', code: '步骤 2：填写邮箱验证码', setPassword: '步骤 3：设置新密码' }
+      : { email: '步骤 1：输入邮箱并获取验证码', code: '步骤 2：填写邮箱验证码' };
+
     stepLabelEl.textContent = labels[wizardStep] ?? '';
 
+    const order = intent === 'reset' ? ['email', 'code', 'setPassword'] : ['email', 'code'];
+    const current = order.indexOf(wizardStep);
     stepsEl.querySelectorAll('.auth-step-dot').forEach((dot) => {
-      const step = dot.dataset.step;
-      const order = ['email', 'code', 'setPassword'];
-      const current = order.indexOf(wizardStep);
-      const idx = order.indexOf(step);
+      const idx = order.indexOf(dot.dataset.step);
       dot.classList.toggle('active', idx === current);
       dot.classList.toggle('done', idx < current);
     });
@@ -209,87 +181,35 @@ function bindAuthPortal(container) {
     const isReg = intent === 'register';
     const isReset = intent === 'reset';
     const isPwd = mode === 'password';
-    const isCodeWizard = (isReg && !isPwd) || isReset;
+    const isRegCodeWizard = isReg && !isPwd;
+    const isResetWizard = isReset;
 
-    if (isCodeWizard && wizardStep === 'email') {
-      panelContent.innerHTML = `
-        <div class="field">
-          <label class="label" for="auth-email">邮箱</label>
-          <input class="input" id="auth-email" type="email" placeholder="you@example.com" autocomplete="email" value="${pendingEmail}" />
-        </div>
-      `;
-      actionsEl.innerHTML = `
-        <button type="button" class="btn btn-ghost" id="auth-send-code">获取验证码</button>
-      `;
-    } else if (isCodeWizard && wizardStep === 'code') {
-      panelContent.innerHTML = `
-        <div class="field">
-          <label class="label">邮箱</label>
-          <input class="input" type="email" value="${pendingEmail}" disabled />
-        </div>
-        <div class="field">
-          <label class="label" for="auth-code">验证码</label>
-          <input class="input" id="auth-code" type="text" inputmode="numeric" maxlength="8" autocomplete="one-time-code" placeholder="6 位验证码" value="${pendingCode}" />
-        </div>
-      `;
-      actionsEl.innerHTML = `
-        <button type="button" class="btn btn-ghost" id="auth-back">上一步</button>
-        <button type="button" class="btn" id="auth-next">下一步</button>
-      `;
-    } else if (isCodeWizard && wizardStep === 'setPassword') {
-      const pwdLabel = isReset ? '新密码' : '设置密码';
-      const submitLabel = isReset ? '重置密码' : '完成注册';
-      panelContent.innerHTML = `
-        <div class="field">
-          <label class="label">邮箱</label>
-          <input class="input" type="email" value="${pendingEmail}" disabled />
-        </div>
-        ${passwordFieldHtml('auth-password', pwdLabel, 'new-password')}
-        ${passwordFieldHtml('auth-password-confirm', '确认密码', 'new-password')}
-      `;
-      actionsEl.innerHTML = `
-        <button type="button" class="btn btn-ghost" id="auth-back">上一步</button>
-        <button type="submit" class="btn" id="auth-submit">${submitLabel}</button>
-      `;
+    if (isResetWizard && wizardStep === 'email') {
+      panelContent.innerHTML = `<div class="field"><label class="label" for="auth-email">邮箱</label><input class="input" id="auth-email" type="email" placeholder="you@example.com" autocomplete="email" value="${pendingEmail}" /></div>`;
+      actionsEl.innerHTML = `<button type="button" class="btn btn-ghost" id="auth-send-code">获取验证码</button>`;
+    } else if (isResetWizard && wizardStep === 'code') {
+      panelContent.innerHTML = `<div class="field"><label class="label">邮箱</label><input class="input" type="email" value="${pendingEmail}" disabled /></div><div class="field"><label class="label" for="auth-code">验证码</label><input class="input" id="auth-code" type="text" inputmode="numeric" maxlength="8" autocomplete="one-time-code" placeholder="6 位验证码" value="${pendingCode}" /></div>`;
+      actionsEl.innerHTML = `<button type="button" class="btn btn-ghost" id="auth-back">上一步</button><button type="button" class="btn" id="auth-next">下一步</button>`;
+    } else if (isResetWizard && wizardStep === 'setPassword') {
+      panelContent.innerHTML = `<div class="field"><label class="label">邮箱</label><input class="input" type="email" value="${pendingEmail}" disabled /></div>${passwordFieldHtml('auth-password', '新密码', 'new-password')}${passwordFieldHtml('auth-password-confirm', '确认密码', 'new-password')}`;
+      actionsEl.innerHTML = `<button type="button" class="btn btn-ghost" id="auth-back">上一步</button><button type="submit" class="btn" id="auth-submit">重置密码</button>`;
       bindPasswordToggles(panelContent);
+    } else if (isRegCodeWizard && wizardStep === 'email') {
+      panelContent.innerHTML = `<div class="field"><label class="label" for="auth-email">邮箱</label><input class="input" id="auth-email" type="email" placeholder="you@example.com" autocomplete="email" value="${pendingEmail}" /></div>`;
+      actionsEl.innerHTML = `<button type="button" class="btn btn-ghost" id="auth-send-code">获取验证码</button>`;
+    } else if (isRegCodeWizard && wizardStep === 'code') {
+      panelContent.innerHTML = `<div class="field"><label class="label">邮箱</label><input class="input" type="email" value="${pendingEmail}" disabled /></div><div class="field"><label class="label" for="auth-code">验证码</label><input class="input" id="auth-code" type="text" inputmode="numeric" maxlength="8" autocomplete="one-time-code" placeholder="6 位验证码" value="${pendingCode}" /></div>`;
+      actionsEl.innerHTML = `<button type="button" class="btn btn-ghost" id="auth-back">上一步</button><button type="submit" class="btn" id="auth-submit">完成注册</button>`;
     } else if (isReg && isPwd) {
-      panelContent.innerHTML = `
-        <div class="field">
-          <label class="label" for="auth-email">邮箱</label>
-          <input class="input" id="auth-email" type="email" placeholder="you@example.com" autocomplete="email" />
-        </div>
-        ${passwordFieldHtml('auth-password', '密码', 'new-password')}
-        ${passwordFieldHtml('auth-password-confirm', '确认密码', 'new-password')}
-      `;
+      panelContent.innerHTML = `<div class="field"><label class="label" for="auth-email">邮箱</label><input class="input" id="auth-email" type="email" placeholder="you@example.com" autocomplete="email" /></div>${passwordFieldHtml('auth-password', '密码', 'new-password')}${passwordFieldHtml('auth-password-confirm', '确认密码', 'new-password')}`;
       actionsEl.innerHTML = `<button type="submit" class="btn auth-submit" id="auth-submit">注册</button>`;
       bindPasswordToggles(panelContent);
     } else if (!isReg && isPwd) {
-      panelContent.innerHTML = `
-        <div class="field">
-          <label class="label" for="auth-email">邮箱</label>
-          <input class="input" id="auth-email" type="email" placeholder="you@example.com" autocomplete="email" />
-        </div>
-        ${passwordFieldHtml('auth-password', '密码', 'current-password')}
-        <p class="auth-forgot-wrap">
-          <button type="button" class="auth-forgot-link" id="auth-forgot">忘记密码？</button>
-        </p>
-      `;
+      panelContent.innerHTML = `<div class="field"><label class="label" for="auth-email">邮箱</label><input class="input" id="auth-email" type="email" placeholder="you@example.com" autocomplete="email" /></div>${passwordFieldHtml('auth-password', '密码', 'current-password')}<p class="auth-forgot-wrap"><button type="button" class="auth-forgot-link" id="auth-forgot">忘记密码？</button></p>`;
       actionsEl.innerHTML = `<button type="submit" class="btn auth-submit" id="auth-submit">登录</button>`;
       bindPasswordToggles(panelContent);
     } else {
-      panelContent.innerHTML = `
-        <div class="field">
-          <label class="label" for="auth-email">邮箱</label>
-          <input class="input" id="auth-email" type="email" placeholder="you@example.com" autocomplete="email" />
-        </div>
-        <div class="field">
-          <label class="label" for="auth-code">验证码</label>
-          <div class="auth-code-row">
-            <input class="input" id="auth-code" type="text" inputmode="numeric" maxlength="8" autocomplete="one-time-code" placeholder="6 位验证码" />
-            <button type="button" class="btn btn-ghost" id="auth-send-code">获取验证码</button>
-          </div>
-        </div>
-      `;
+      panelContent.innerHTML = `<div class="field"><label class="label" for="auth-email">邮箱</label><input class="input" id="auth-email" type="email" placeholder="you@example.com" autocomplete="email" /></div><div class="field"><label class="label" for="auth-code">验证码</label><div class="auth-code-row"><input class="input" id="auth-code" type="text" inputmode="numeric" maxlength="8" autocomplete="one-time-code" placeholder="6 位验证码" /><button type="button" class="btn btn-ghost" id="auth-send-code">获取验证码</button></div></div>`;
       actionsEl.innerHTML = `<button type="submit" class="btn auth-submit" id="auth-submit">登录</button>`;
     }
 
@@ -300,17 +220,13 @@ function bindAuthPortal(container) {
 
   function updateHint() {
     if (intent === 'reset') {
-      if (wizardStep === 'email') {
-        hintEl.textContent = '输入注册邮箱，获取验证码后重置密码。';
-      } else if (wizardStep === 'code') {
-        hintEl.textContent = '请填写邮件中的验证码。';
-      } else {
-        hintEl.textContent = '设置新密码后请使用新密码登录。';
-      }
+      if (wizardStep === 'email') hintEl.textContent = '输入注册邮箱，获取验证码后重置密码。';
+      else if (wizardStep === 'code') hintEl.textContent = '请填写邮件中的验证码。';
+      else hintEl.textContent = '设置新密码后请使用新密码登录。';
     } else if (intent === 'register' && mode === 'password') {
       hintEl.textContent = '校验邮箱格式后创建账号；请设置并确认密码。';
     } else if (intent === 'register' && mode === 'code') {
-      hintEl.textContent = '获取验证码后，验证通过再设置登录密码。';
+      hintEl.textContent = '获取验证码后，验证通过即可注册，无需设置密码。';
     } else if (intent === 'login' && mode === 'password') {
       hintEl.textContent = '使用邮箱与密码登录。';
     } else {
@@ -338,15 +254,11 @@ function bindAuthPortal(container) {
 
   function bindPanelActions() {
     panelContent.querySelector('#auth-forgot')?.addEventListener('click', () => {
-      intent = 'reset';
-      wizardStep = 'email';
-      pendingEmail = '';
-      pendingCode = '';
+      intent = 'reset'; wizardStep = 'email'; pendingEmail = ''; pendingCode = '';
       renderPanel();
     });
 
-    const sendBtn =
-      actionsEl.querySelector('#auth-send-code') || panelContent.querySelector('#auth-send-code');
+    const sendBtn = actionsEl.querySelector('#auth-send-code') || panelContent.querySelector('#auth-send-code');
     if (sendBtn) {
       sendBtn.addEventListener('click', async () => {
         clearStatus();
@@ -354,13 +266,9 @@ function bindAuthPortal(container) {
         if (!validateEmail(email)) return;
 
         let path;
-        if (intent === 'reset') {
-          path = '/api/v1/password/reset/email_code';
-        } else if (intent === 'register') {
-          path = '/api/v1/register';
-        } else {
-          path = '/api/v1/login';
-        }
+        if (intent === 'reset') path = '/api/v1/password/reset/email_code';
+        else if (intent === 'register') path = '/api/v1/register';
+        else path = '/api/v1/login';
 
         sendBtn.disabled = true;
         try {
@@ -369,10 +277,7 @@ function bindAuthPortal(container) {
             pendingEmail = email;
             showStatus('验证码已发送，请查收邮件', 'ok');
             startCountdown(sendBtn);
-            if (
-              (intent === 'register' && mode === 'code' && wizardStep === 'email') ||
-              (intent === 'reset' && wizardStep === 'email')
-            ) {
+            if ((intent === 'register' && mode === 'code' && wizardStep === 'email') || (intent === 'reset' && wizardStep === 'email')) {
               wizardStep = 'code';
               renderPanel();
             }
@@ -397,10 +302,7 @@ function bindAuthPortal(container) {
     actionsEl.querySelector('#auth-next')?.addEventListener('click', () => {
       clearStatus();
       const code = panelContent.querySelector('#auth-code')?.value.trim();
-      if (!code) {
-        showStatus('请输入验证码', 'err');
-        return;
-      }
+      if (!code) { showStatus('请输入验证码', 'err'); return; }
       pendingCode = code;
       wizardStep = 'setPassword';
       renderPanel();
@@ -411,10 +313,7 @@ function bindAuthPortal(container) {
 
   tabs.forEach((tab) => {
     tab.addEventListener('click', () => {
-      intent = tab.dataset.intent;
-      wizardStep = 'email';
-      pendingEmail = '';
-      pendingCode = '';
+      intent = tab.dataset.intent; wizardStep = 'email'; pendingEmail = ''; pendingCode = '';
       tabs.forEach((t) => t.classList.toggle('active', t === tab));
       renderPanel();
     });
@@ -422,10 +321,7 @@ function bindAuthPortal(container) {
 
   modeBtns.forEach((btn) => {
     btn.addEventListener('click', () => {
-      mode = btn.dataset.mode;
-      wizardStep = 'email';
-      pendingEmail = '';
-      pendingCode = '';
+      mode = btn.dataset.mode; wizardStep = 'email'; pendingEmail = ''; pendingCode = '';
       modeBtns.forEach((b) => b.classList.toggle('active', b === btn));
       renderPanel();
     });
@@ -440,16 +336,9 @@ function bindAuthPortal(container) {
 
     try {
       if (intent === 'reset' && wizardStep === 'setPassword') {
-        const newPassword = validatePasswordPair(
-          panelContent.querySelector('#auth-password'),
-          panelContent.querySelector('#auth-password-confirm'),
-          true
-        );
+        const newPassword = validatePasswordPair(panelContent.querySelector('#auth-password'), panelContent.querySelector('#auth-password-confirm'), true);
         if (!newPassword) return;
-
-        const res = await apiRequest('POST', '/api/v1/password/reset', {
-          body: { email: pendingEmail, code: pendingCode, newPassword },
-        });
+        const res = await apiRequest('POST', '/api/v1/password/reset', { body: { email: pendingEmail, code: pendingCode, newPassword } });
         if (res.data?.code === 0) {
           clearSession();
           showStatus('密码已重置，请使用新密码登录', 'ok');
@@ -460,17 +349,11 @@ function bindAuthPortal(container) {
         return;
       }
 
-      if (intent === 'register' && mode === 'code' && wizardStep === 'setPassword') {
-        const password = validatePasswordPair(
-          panelContent.querySelector('#auth-password'),
-          panelContent.querySelector('#auth-password-confirm'),
-          true
-        );
-        if (!password) return;
-
-        const res = await apiRequest('POST', '/api/v1/register', {
-          body: withDeviceId({ email: pendingEmail, code: pendingCode, password }),
-        });
+      // 验证码注册：只需邮箱+验证码
+      if (intent === 'register' && mode === 'code' && wizardStep === 'code') {
+        const code = panelContent.querySelector('#auth-code')?.value.trim();
+        if (!code) { showStatus('请输入验证码', 'err'); return; }
+        const res = await apiRequest('POST', '/api/v1/register', { body: withDeviceId({ email: pendingEmail, code }) });
         if (res.data?.code === 0) {
           showStatus(`注册并登录成功，userId=${res.data.data?.userId ?? '—'}`, 'ok');
           await refreshSession();
@@ -484,13 +367,8 @@ function bindAuthPortal(container) {
       if (!validateEmail(email)) return;
 
       if (intent === 'register' && mode === 'password') {
-        const password = validatePasswordPair(
-          panelContent.querySelector('#auth-password'),
-          panelContent.querySelector('#auth-password-confirm'),
-          true
-        );
+        const password = validatePasswordPair(panelContent.querySelector('#auth-password'), panelContent.querySelector('#auth-password-confirm'), true);
         if (!password) return;
-
         const res = await apiRequest('POST', '/api/v1/register', { body: withDeviceId({ email, password }) });
         if (res.data?.code === 0) {
           showStatus(`注册并登录成功，userId=${res.data.data?.userId ?? '—'}`, 'ok');
@@ -502,36 +380,20 @@ function bindAuthPortal(container) {
       }
 
       if (intent === 'login' && mode === 'password') {
-        const password = validatePasswordPair(
-          panelContent.querySelector('#auth-password'),
-          null,
-          false
-        );
+        const password = validatePasswordPair(panelContent.querySelector('#auth-password'), null, false);
         if (!password) return;
-
         const res = await apiRequest('POST', '/api/v1/login', { body: withDeviceId({ email, password }) });
-        if (res.data?.code === 0) {
-          showStatus('登录成功', 'ok');
-          await refreshSession();
-        } else {
-          showStatus(res.data?.message || '登录失败', 'err');
-        }
+        if (res.data?.code === 0) { showStatus('登录成功', 'ok'); await refreshSession(); }
+        else showStatus(res.data?.message || '登录失败', 'err');
         return;
       }
 
       if (intent === 'login' && mode === 'code') {
         const code = panelContent.querySelector('#auth-code')?.value.trim();
-        if (!code) {
-          showStatus('请输入验证码', 'err');
-          return;
-        }
+        if (!code) { showStatus('请输入验证码', 'err'); return; }
         const res = await apiRequest('POST', '/api/v1/login', { body: withDeviceId({ email, code }) });
-        if (res.data?.code === 0) {
-          showStatus('登录成功', 'ok');
-          await refreshSession();
-        } else {
-          showStatus(res.data?.message || '登录失败', 'err');
-        }
+        if (res.data?.code === 0) { showStatus('登录成功', 'ok'); await refreshSession(); }
+        else showStatus(res.data?.message || '登录失败', 'err');
       }
     } catch (err) {
       showStatus(err.message || '网络错误', 'err');

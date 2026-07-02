@@ -113,7 +113,7 @@ public class UserService {
             return result;
         }
 
-        String secretHash = passwordEncoder.encode(password);
+        String secretHash = (password != null && !password.isEmpty()) ? passwordEncoder.encode(password) : "";
 
         User user = new User();
         user.setDisplayName(credential);
@@ -224,9 +224,15 @@ public class UserService {
         String userAgent = (String) request.get("userAgent");
         boolean codeVerified = Boolean.TRUE.equals(request.get("codeVerified"));
 
-        if (credentialType == null || credential == null || (password == null && code == null)) {
+        if (credentialType == null || credential == null) {
             result.put("code", 400);
             result.put("message", "参数不完整");
+            return result;
+        }
+
+        if (!codeVerified && (password == null || password.isBlank())) {
+            result.put("code", 400);
+            result.put("message", "参数不完整：需要密码或验证码登录");
             return result;
         }
 
@@ -240,12 +246,6 @@ public class UserService {
             }
             credential = CredentialValidator.normalizeCredential(type, credential);
             credentialType = type.name();
-        }
-
-        if (!codeVerified && (password == null || password.isEmpty())) {
-            result.put("code", 400);
-            result.put("message", "参数不完整：需要密码或验证码登录");
-            return result;
         }
 
         QueryWrapper<UserAuth> authWrapper = new QueryWrapper<>();
@@ -814,7 +814,7 @@ public class UserService {
             return result;
         }
 
-        String secretHash = passwordEncoder.encode(password);
+        String secretHash = (password != null && !password.isEmpty()) ? passwordEncoder.encode(password) : "";
 
         User user = new User();
         user.setDisplayName(displayName);
@@ -982,6 +982,15 @@ public class UserService {
             return result;
         }
 
+        // 幂等：检查分组名是否已存在
+        QueryWrapper<Group> existWrapper = new QueryWrapper<>();
+        existWrapper.eq("name", name).eq("is_deleted", 0);
+        if (groupMapper.selectCount(existWrapper) > 0) {
+            result.put("code", 409);
+            result.put("message", "分组已存在");
+            return result;
+        }
+
         Group group = new Group();
         group.setName(name);
         group.setDescription((String) request.get("description"));
@@ -1059,8 +1068,19 @@ public class UserService {
             return result;
         }
 
+        // 幂等：如果改名，检查新名字是否与其他分组冲突
         if (request.containsKey("name")) {
-            group.setName((String) request.get("name"));
+            String newName = (String) request.get("name");
+            if (!newName.equals(group.getName())) {
+                QueryWrapper<Group> dupWrapper = new QueryWrapper<>();
+                dupWrapper.eq("name", newName).eq("is_deleted", 0).ne("group_id", groupId);
+                if (groupMapper.selectCount(dupWrapper) > 0) {
+                    result.put("code", 409);
+                    result.put("message", "分组名称已存在");
+                    return result;
+                }
+            }
+            group.setName(newName);
         }
         if (request.containsKey("description")) {
             group.setDescription((String) request.get("description"));
@@ -1339,8 +1359,19 @@ public class UserService {
             return result;
         }
 
+        // 幂等：如果改了 permCode，检查新编码是否与其他权限冲突
         if (request.containsKey("permCode")) {
-            permission.setPermCode((String) request.get("permCode"));
+            String newCode = (String) request.get("permCode");
+            if (!newCode.equals(permission.getPermCode())) {
+                QueryWrapper<Permission> dupWrapper = new QueryWrapper<>();
+                dupWrapper.eq("perm_code", newCode).ne("perm_id", permId);
+                if (permissionMapper.selectCount(dupWrapper) > 0) {
+                    result.put("code", 409);
+                    result.put("message", "权限编码已存在");
+                    return result;
+                }
+            }
+            permission.setPermCode(newCode);
         }
         if (request.containsKey("permName")) {
             permission.setPermName((String) request.get("permName"));
@@ -1496,7 +1527,21 @@ public class UserService {
         }
 
         if (request.containsKey("permId")) {
-            gp.setPermId(Long.valueOf(String.valueOf(request.get("permId"))));
+            Long newPermId = Long.valueOf(String.valueOf(request.get("permId")));
+
+            // 幂等：检查新权限是否已关联到该分组
+            if (!newPermId.equals(gp.getPermId())) {
+                QueryWrapper<GroupPermission> dupWrapper = new QueryWrapper<>();
+                dupWrapper.eq("group_id", gp.getGroupId())
+                        .eq("perm_id", newPermId)
+                        .ne("id", id);
+                if (groupPermissionMapper.selectCount(dupWrapper) > 0) {
+                    result.put("code", 409);
+                    result.put("message", "该分组已关联此权限");
+                    return result;
+                }
+            }
+            gp.setPermId(newPermId);
         }
         groupPermissionMapper.updateById(gp);
 
@@ -1637,6 +1682,20 @@ public class UserService {
 
         if (request.containsKey("permId")) {
             Long newPermId = Long.valueOf(String.valueOf(request.get("permId")));
+
+            // 幂等：检查新权限是否已分配给该用户
+            if (!newPermId.equals(up.getPermId())) {
+                QueryWrapper<UserPermission> dupWrapper = new QueryWrapper<>();
+                dupWrapper.eq("user_id", up.getUserId())
+                        .eq("perm_id", newPermId)
+                        .ne("id", id);
+                if (userPermissionMapper.selectCount(dupWrapper) > 0) {
+                    result.put("code", 409);
+                    result.put("message", "用户已拥有该权限");
+                    return result;
+                }
+            }
+
             Permission permission = permissionMapper.selectById(newPermId);
             if (permission == null || permission.getActive() == 0) {
                 result.put("code", 404);

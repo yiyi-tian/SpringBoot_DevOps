@@ -66,7 +66,7 @@ public class HttpInterfaceConfig {
 
         HttpServiceProxyFactory factory = HttpServiceProxyFactory
                 .builder(WebClientAdapter.forClient(webClient))
-                .blockTimeout(Duration.ofSeconds(10))
+                .blockTimeout(Duration.ofSeconds(20))
                 .build();
 
         return factory.createClient(clazz);

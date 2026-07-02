@@ -50,6 +50,13 @@ public class TemplateService {
             return ServiceResults.error(400, "无效的 channelType");
         }
 
+        // 幂等：检查是否已存在同名同渠道模板
+        QueryWrapper<MsgTemplate> existWrapper = new QueryWrapper<>();
+        existWrapper.eq("name", name).eq("channel_type", channelType);
+        if (templateMapper.selectCount(existWrapper) > 0) {
+            return ServiceResults.error(409, "模板已存在");
+        }
+
         MsgTemplate template = new MsgTemplate();
         template.setName(name);
         template.setContent(content);
@@ -114,8 +121,20 @@ public class TemplateService {
         if (template == null) {
             return ServiceResults.error(404, "模板不存在");
         }
+
+        // 幂等：如果改名，检查新名字是否与其他模板冲突
         if (request.containsKey("name")) {
-            template.setName(stringVal(request.get("name")));
+            String newName = stringVal(request.get("name"));
+            if (!newName.equals(template.getName())) {
+                QueryWrapper<MsgTemplate> dupWrapper = new QueryWrapper<>();
+                dupWrapper.eq("name", newName)
+                        .eq("channel_type", template.getChannelType())
+                        .ne("template_id", id);
+                if (templateMapper.selectCount(dupWrapper) > 0) {
+                    return ServiceResults.error(409, "模板名称已存在");
+                }
+            }
+            template.setName(newName);
         }
         if (request.containsKey("content")) {
             template.setContent(stringVal(request.get("content")));
@@ -192,8 +211,17 @@ public class TemplateService {
         String name = stringVal(req.get("name"));
         if (key == null || key.isEmpty()) return ServiceResults.error(400, "varKey 不能为空");
         if (name == null || name.isEmpty()) return ServiceResults.error(400, "变量名不能为空");
+
+        // 幂等：检查 varKey 是否已存在
+        QueryWrapper<MsgVariable> existWrapper = new QueryWrapper<>();
+        existWrapper.eq("var_key", key);
+        if (variableMapper.selectCount(existWrapper) > 0) {
+            return ServiceResults.error(409, "变量已存在");
+        }
+
         MsgVariable v = new MsgVariable();
-        v.setVarKey(key); v.setName(name); v.setType(stringVal(req.get("type")) != null ? stringVal(req.get("type")) : "STRING");
+        v.setVarKey(key); v.setName(name);
+        v.setType(stringVal(req.get("type")) != null ? stringVal(req.get("type")) : "STRING");
         v.setRequired((Integer) req.getOrDefault("required", 1));
         v.setDefaultValue(stringVal(req.get("defaultValue")));
         v.setScope(stringVal(req.get("scope")) != null ? stringVal(req.get("scope")) : "GLOBAL");
@@ -215,6 +243,19 @@ public class TemplateService {
     public Map<String, Object> updateVariable(String id, Map<String, Object> req) {
         MsgVariable v = variableMapper.selectById(Long.valueOf(id));
         if (v == null) return ServiceResults.error(404, "变量不存在");
+
+        // 幂等：如果改了 varKey，检查新 key 是否冲突
+        if (req.containsKey("varKey")) {
+            String newKey = stringVal(req.get("varKey"));
+            if (!newKey.equals(v.getVarKey())) {
+                QueryWrapper<MsgVariable> dupWrapper = new QueryWrapper<>();
+                dupWrapper.eq("var_key", newKey).ne("variable_id", v.getVariableId());
+                if (variableMapper.selectCount(dupWrapper) > 0) {
+                    return ServiceResults.error(409, "变量 key 已存在");
+                }
+            }
+            v.setVarKey(newKey);
+        }
         if (req.containsKey("name")) v.setName(stringVal(req.get("name")));
         if (req.containsKey("type")) v.setType(stringVal(req.get("type")));
         if (req.containsKey("required")) v.setRequired((Integer) req.get("required"));

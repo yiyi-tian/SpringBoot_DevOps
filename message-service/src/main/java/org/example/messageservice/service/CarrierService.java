@@ -61,6 +61,13 @@ public class CarrierService {
             return ServiceResults.error(400, "无效的 channelType");
         }
 
+        // 幂等：检查是否已存在同名同渠道载体
+        QueryWrapper<MsgCarrier> existWrapper = new QueryWrapper<>();
+        existWrapper.eq("name", name).eq("channel_type", channelType).isNull("deleted_at");
+        if (carrierMapper.selectCount(existWrapper) > 0) {
+            return ServiceResults.error(409, "载体已存在");
+        }
+
         MsgCarrier carrier = new MsgCarrier();
         carrier.setName(name);
         carrier.setChannelType(channelType);
@@ -71,9 +78,7 @@ public class CarrierService {
         carrier.setUpdatedAt(LocalDateTime.now());
         carrierMapper.insert(carrier);
 
-        Map<String, Object> data = new HashMap<>();
-        data.put("carrierId", carrier.getCarrierId());
-        return ServiceResults.ok(data);
+        return ServiceResults.ok(Map.of("carrierId", carrier.getCarrierId()));
     }
 
     public Map<String, Object> update(Long id, Map<String, Object> request) {
@@ -81,8 +86,21 @@ public class CarrierService {
         if (carrier == null) {
             return ServiceResults.error(404, "载体不存在");
         }
+
+        // 幂等：如果改名，检查新名字是否与其他载体冲突
         if (request.containsKey("name")) {
-            carrier.setName(stringVal(request.get("name")));
+            String newName = stringVal(request.get("name"));
+            if (!newName.equals(carrier.getName())) {
+                QueryWrapper<MsgCarrier> dupWrapper = new QueryWrapper<>();
+                dupWrapper.eq("name", newName)
+                        .eq("channel_type", carrier.getChannelType())
+                        .isNull("deleted_at")
+                        .ne("carrier_id", id);
+                if (carrierMapper.selectCount(dupWrapper) > 0) {
+                    return ServiceResults.error(409, "载体名称已存在");
+                }
+            }
+            carrier.setName(newName);
         }
         if (request.containsKey("provider")) {
             carrier.setProvider(stringVal(request.get("provider")));

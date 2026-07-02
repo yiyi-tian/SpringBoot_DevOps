@@ -66,12 +66,11 @@ public class AuthService {
         return switch (phase) {
             case SEND_CODE -> sendRegisterCode(credentialType, credential);
             case CODE_AUTH -> completeRegister(credentialType, credential, null,
-                    String.valueOf(request.get("code")).trim(), false, clientIp, userAgent, deviceId);
-            case PASSWORD_WITH_CODE -> completeRegister(credentialType, credential,
-                    String.valueOf(request.get("password")).trim(),
-                    String.valueOf(request.get("code")).trim(), true, clientIp, userAgent, deviceId);
+                    String.valueOf(request.get("code")).trim(), clientIp, userAgent, deviceId);
             case PASSWORD_AUTH -> completeRegister(credentialType, credential,
-                    String.valueOf(request.get("password")).trim(), null, false, clientIp, userAgent, deviceId);
+                    String.valueOf(request.get("password")).trim(), null, clientIp, userAgent, deviceId);
+            // PASSWORD_WITH_CODE 已移除
+            default -> error(400, "不支持的认证方式，请使用 password 或 code");
         };
     }
 
@@ -94,7 +93,7 @@ public class AuthService {
                     String.valueOf(request.get("code")).trim(), clientIp, userAgent, deviceId);
             case PASSWORD_AUTH -> completeLogin(credentialType, credential,
                     String.valueOf(request.get("password")).trim(), null, clientIp, userAgent, deviceId);
-            case PASSWORD_WITH_CODE -> error(400, "登录不支持同时提交 password 与 code");
+            default -> error(400, "不支持的认证方式，请使用 password 或 code");
         };
     }
 
@@ -113,28 +112,38 @@ public class AuthService {
     }
 
     private Map<String, Object> completeRegister(CredentialType credentialType, String credential,
-                                                  String password, String code, boolean passwordWithCode,
+                                                  String password, String code,
                                                   String clientIp, String userAgent, String deviceId) {
-        if (credentialType == CredentialType.PHONE && code != null && !code.isBlank()) {
+        if (credentialType == CredentialType.PHONE) {
             return error(501, org.example.topbiz.support.AuthRequestValidator.PHONE_SMS_NOT_CONNECTED);
         }
 
-        boolean verifyCodeRequired = (code != null && !code.isBlank());
-        if (verifyCodeRequired) {
+        // 验证码注册：必须提供 code
+        if (password == null && (code == null || code.isBlank())) {
+            return error(400, "验证码注册必须提供 code");
+        }
+
+        // 密码注册：必须提供 password
+        if (password != null && password.length() < 6) {
+            return error(400, "密码长度不能少于6位");
+        }
+
+        // 验证码模式：校验验证码
+        boolean isCodeMode = (code != null && !code.isBlank());
+        if (isCodeMode) {
             boolean valid = verifyCode(credentialType.name(), credential, MessageConstants.SCENE_REGISTER, code);
             if (!valid) {
                 return error(400, "验证码错误或已过期");
             }
         }
 
-        if (password == null || password.isBlank()) {
-            return error(400, org.example.topbiz.support.AuthRequestValidator.REGISTER_CODE_NEEDS_PASSWORD);
-        }
-
         Map<String, Object> userRequest = new HashMap<>();
         userRequest.put("credentialType", credentialType.name());
         userRequest.put("credential", credential);
-        userRequest.put("password", password.trim());
+        if (password != null) {
+            userRequest.put("password", password.trim());
+        }
+        userRequest.put("code", code);
 
         Map<String, Object> userResult = userServiceClient.register(userRequest);
         if (userResult == null || !"0".equals(String.valueOf(userResult.get("code")))) {
@@ -153,8 +162,11 @@ public class AuthService {
     private Map<String, Object> completeLogin(CredentialType credentialType, String credential,
                                              String password, String code,
                                              String clientIp, String userAgent, String deviceId) {
-        if (credentialType == CredentialType.PHONE && code != null && !code.isBlank()) {
-            return error(501, org.example.topbiz.support.AuthRequestValidator.PHONE_SMS_NOT_CONNECTED);
+        if (credentialType == CredentialType.PHONE) {
+            if (code != null && !code.isBlank()) {
+                return error(501, org.example.topbiz.support.AuthRequestValidator.PHONE_SMS_NOT_CONNECTED);
+            }
+            // 手机号+密码登录：继续
         }
 
         boolean codeVerified = false;
@@ -169,7 +181,9 @@ public class AuthService {
         Map<String, Object> userRequest = new HashMap<>();
         userRequest.put("credentialType", credentialType.name());
         userRequest.put("credential", credential);
-        userRequest.put("password", password);
+        if (password != null) {
+            userRequest.put("password", password.trim());
+        }
         userRequest.put("clientIp", clientIp);
         userRequest.put("userAgent", userAgent);
         if (codeVerified) {
@@ -218,23 +232,12 @@ public class AuthService {
         return messageServiceClient.sendEmailCode(msgRequest);
     }
 
-    /**
-     * 发送注册手机验证码 — 未接第三方短信
-     */
-    private Map<String, Object> sendRegisterPhoneCode(String phone) {
-        return error(501, org.example.topbiz.support.AuthRequestValidator.PHONE_SMS_NOT_CONNECTED);
-    }
-
     private Map<String, Object> sendLoginEmailCode(String email) {
         email = CredentialValidator.normalizeEmail(email);
         Map<String, Object> msgRequest = new HashMap<>();
         msgRequest.put("email", email);
         msgRequest.put("scene", MessageConstants.SCENE_LOGIN);
         return messageServiceClient.sendEmailCode(msgRequest);
-    }
-
-    private Map<String, Object> sendLoginPhoneCode(String phone) {
-        return error(501, org.example.topbiz.support.AuthRequestValidator.PHONE_SMS_NOT_CONNECTED);
     }
 
     // ==================== 注销、登出、权限、分组 ====================

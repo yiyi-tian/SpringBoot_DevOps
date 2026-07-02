@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS `msg_carrier` (
     `deleted_at`   DATETIME NULL COMMENT '软删除',
     `created_at`   DATETIME DEFAULT CURRENT_TIMESTAMP,
     `updated_at`   DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    KEY idx_channel_enabled (channel_type, enabled)
+    KEY idx_channel_enabled (channel_type, enabled),
+    UNIQUE KEY uk_name_channel (name, channel_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 消息模板
@@ -45,7 +46,8 @@ CREATE TABLE IF NOT EXISTS `msg_template` (
     `status`      VARCHAR(32) DEFAULT 'DRAFT' COMMENT 'DRAFT/ACTIVE/DISABLED',
     `created_at`  DATETIME DEFAULT CURRENT_TIMESTAMP,
     `updated_at`  DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    KEY idx_channel_status (channel_type, status)
+    KEY idx_channel_status (channel_type, status),
+    UNIQUE KEY uk_name_channel (name, channel_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 模板变量

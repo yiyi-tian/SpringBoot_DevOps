@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS `group` (
     `created_at`      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     INDEX `idx_creator` (`creator_user_id`),
     INDEX `idx_is_deleted` (`is_deleted`),
+    UNIQUE KEY uk_name (name),
     CONSTRAINT `fk_group_creator` FOREIGN KEY (`creator_user_id`) REFERENCES `user` (`user_id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户组/角色表';
 
