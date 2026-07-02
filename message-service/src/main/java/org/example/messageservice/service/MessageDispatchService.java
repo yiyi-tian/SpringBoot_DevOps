@@ -1,204 +1,175 @@
 package org.example.messageservice.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.example.messageservice.entity.MsgCarrier;
 import org.example.messageservice.entity.MsgMessage;
+import org.example.messageservice.entity.MsgTemplate;
 import org.example.messageservice.mapper.MsgMessageMapper;
-import org.example.messageservice.mapper.MsgCarrierMapper;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import org.example.messageservice.support.ServiceResults;
+import org.example.messageservice.support.TemplateRenderer;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.mail.javamail.JavaMailSenderImpl;
-import org.springframework.mail.javamail.MimeMessageHelper;
-import jakarta.mail.internet.MimeMessage;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class MessageDispatchService {
 
     @Autowired
-    private MsgMessageMapper msgMessageMapper;
-    @Autowired
-    private MsgCarrierMapper carrierMapper;
+    private TemplateService templateService;
+
     @Autowired
     private CarrierService carrierService;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    @Autowired
+    private EmailSendService emailSendService;
 
+    @Autowired
+    private MsgMessageMapper messageMapper;
+
+    @SuppressWarnings("unchecked")
     public Map<String, Object> sendInstant(Map<String, Object> request) {
-        String channelType = (String) request.get("channelType");
-        String receiver = (String) request.get("receiver");
-        String content = (String) request.get("content");
-        Object templateIdObj = request.get("templateId");
-        Object carrierIdObj = request.get("carrierId");
+        String channelType = stringVal(request.get("channelType"));
+        String receiver = stringVal(request.get("receiver"));
+        Long templateId = longVal(request.get("templateId"));
+        Long carrierId = longVal(request.get("carrierId"));
+        Long initiatorUserId = longVal(request.get("initiator_user_id"));
+        Map<String, Object> variables = request.get("variables") instanceof Map<?, ?> map
+                ? (Map<String, Object>) map
+                : Map.of();
 
-        if (channelType == null || channelType.isEmpty()) return error(400, "channelType 不能为空");
-        if (receiver == null || receiver.isEmpty()) return error(400, "receiver 不能为空");
+        if (channelType == null || channelType.isBlank()) {
+            return ServiceResults.error(400, "channelType 不能为空");
+        }
+        if (receiver == null || receiver.isBlank()) {
+            return ServiceResults.error(400, "receiver 不能为空");
+        }
+        if ("TENCENT_SMS".equals(channelType)) {
+            return ServiceResults.error(501, "短信未配置");
+        }
 
-        if ("IN_APP".equals(channelType)) return sendInApp(receiver, content, templateIdObj);
-        if ("EMAIL".equals(channelType)) return sendEmail(receiver, content, carrierIdObj);
-        if ("SMS".equals(channelType) || "TENCENT_SMS".equals(channelType)) return sendSms(receiver, content, carrierIdObj);
+        if (templateId == null) {
+            return ServiceResults.error(400, "templateId 不能为空");
+        }
+        MsgTemplate template = templateService.getActiveTemplate(templateId, channelType);
+        if (template == null) {
+            return ServiceResults.error(404, "模板不存在或未启用");
+        }
 
-        return error(400, "暂不支持的渠道: " + channelType);
+        String rendered = TemplateRenderer.render(template.getContent(), variables);
+        MsgCarrier carrier = "EMAIL".equals(channelType) ? carrierService.resolveCarrier(channelType, carrierId) : null;
+
+        MsgMessage record = new MsgMessage();
+        record.setTemplateId(template.getTemplateId());
+        record.setCarrierId(carrier != null ? carrier.getCarrierId() : null);
+        record.setInitiatorUserId(initiatorUserId);
+        record.setReceiver(receiver);
+        record.setChannelType(channelType);
+        record.setRenderedContent(rendered);
+        record.setSendTime(LocalDateTime.now());
+        record.setCreatedAt(LocalDateTime.now());
+
+        try {
+            if ("EMAIL".equals(channelType)) {
+                emailSendService.send(carrier, receiver, template.getName(), rendered);
+            }
+            record.setStatus("SUCCESS");
+            messageMapper.insert(record);
+            return ServiceResults.ok(Map.of("messageId", record.getMessageId()));
+        } catch (Exception e) {
+            record.setStatus("FAILED");
+            record.setErrorMessage(truncate(e.getMessage(), 500));
+            messageMapper.insert(record);
+            return ServiceResults.error(502, "发送失败: " + e.getMessage());
+        }
     }
 
     public Map<String, Object> sendScheduled(Map<String, Object> request) {
-        String receiver = (String) request.get("receiver");
-        String content = (String) request.get("content");
+        String receiver = stringVal(request.get("receiver"));
+        String content = stringVal(request.get("content"));
         MsgMessage msg = new MsgMessage();
         msg.setReceiver(receiver);
         msg.setRenderedContent(content);
         msg.setStatus("PENDING");
         msg.setCreatedAt(LocalDateTime.now());
-        msgMessageMapper.insert(msg);
-        return ok(Map.of("messageId", msg.getMessageId()));
+        messageMapper.insert(msg);
+        return ServiceResults.ok(Map.of("messageId", msg.getMessageId()));
     }
 
     public Map<String, Object> getSendingRecords(Map<String, Object> params) {
         int page = intVal(params.get("page"), 1);
         int size = intVal(params.get("size"), 20);
-        QueryWrapper<MsgMessage> w = new QueryWrapper<>();
-        w.orderByDesc("created_at");
-        long total = msgMessageMapper.selectCount(w);
-        w.last("LIMIT " + ((page - 1) * size) + ", " + size);
-        return ok(Map.of("records", msgMessageMapper.selectList(w), "total", total));
+
+        QueryWrapper<MsgMessage> wrapper = new QueryWrapper<>();
+        if (params.get("channelType") != null) {
+            wrapper.eq("channel_type", String.valueOf(params.get("channelType")));
+        }
+        if (params.get("receiver") != null) {
+            wrapper.eq("receiver", String.valueOf(params.get("receiver")));
+        }
+        wrapper.orderByDesc("message_id");
+
+        Page<MsgMessage> pageResult = messageMapper.selectPage(new Page<>(page, size), wrapper);
+        List<Map<String, Object>> list = pageResult.getRecords().stream().map(this::toView).collect(Collectors.toList());
+        return ServiceResults.ok(Map.of("list", list, "total", pageResult.getTotal(), "page", page, "size", size));
     }
 
     public Map<String, Object> deleteSendingRecord(Map<String, Object> request) {
-        Object idObj = request.get("id");
-        if (idObj == null) return error(400, "id 不能为空");
-        msgMessageMapper.deleteById(Long.valueOf(String.valueOf(idObj)));
-        return ok();
+        Long id = longVal(request.get("id"));
+        if (id == null) return ServiceResults.error(400, "id 不能为空");
+        if (messageMapper.deleteById(id) == 0) return ServiceResults.error(404, "记录不存在");
+        return ServiceResults.ok();
     }
 
     public Map<String, Object> getInbox(Map<String, Object> params) {
-        String receiver = (String) params.get("receiver");
-        if (receiver == null || receiver.isEmpty()) return error(400, "receiver 不能为空");
+        String receiver = stringVal(params.get("receiver"));
+        if (receiver == null || receiver.isEmpty()) return ServiceResults.error(400, "receiver 不能为空");
         int page = intVal(params.get("page"), 1);
         int size = intVal(params.get("size"), 20);
+
         QueryWrapper<MsgMessage> w = new QueryWrapper<>();
         w.eq("receiver", receiver).orderByDesc("created_at");
-        long total = msgMessageMapper.selectCount(w);
+        long total = messageMapper.selectCount(w);
         w.last("LIMIT " + ((page - 1) * size) + ", " + size);
-        return ok(Map.of("messages", msgMessageMapper.selectList(w), "total", total, "page", page, "size", size));
+        return ServiceResults.ok(Map.of("messages", messageMapper.selectList(w), "total", total, "page", page, "size", size));
     }
 
     public Map<String, Object> triggerScheduler() {
         QueryWrapper<MsgMessage> w = new QueryWrapper<>();
         w.eq("status", "PENDING");
         int count = 0;
-        for (MsgMessage msg : msgMessageMapper.selectList(w)) {
+        for (MsgMessage msg : messageMapper.selectList(w)) {
             msg.setStatus("SUCCESS");
             msg.setSendTime(LocalDateTime.now());
-            msgMessageMapper.updateById(msg);
+            messageMapper.updateById(msg);
             count++;
         }
-        return ok(Map.of("processed", count));
+        return ServiceResults.ok(Map.of("processed", count));
     }
 
-    // --- private ---
+    // ==================== 私有辅助 ====================
 
-    private Map<String, Object> sendInApp(String receiver, String content, Object templateIdObj) {
-        MsgMessage msg = new MsgMessage();
-        msg.setReceiver(receiver);
-        msg.setRenderedContent(content != null ? content : "");
-        msg.setStatus("SUCCESS");
-        msg.setSendTime(LocalDateTime.now());
-        msg.setCreatedAt(LocalDateTime.now());
-        if (templateIdObj != null) msg.setTemplateId(Long.valueOf(String.valueOf(templateIdObj)));
-        msgMessageMapper.insert(msg);
-        return ok(Map.of("messageId", msg.getMessageId()));
+    private Map<String, Object> toView(MsgMessage message) {
+        Map<String, Object> view = new HashMap<>();
+        view.put("id", message.getMessageId());
+        view.put("templateId", message.getTemplateId());
+        view.put("carrierId", message.getCarrierId());
+        view.put("receiver", message.getReceiver());
+        view.put("channelType", message.getChannelType());
+        view.put("status", message.getStatus());
+        view.put("sendTime", message.getSendTime());
+        view.put("initiatorUserId", message.getInitiatorUserId());
+        view.put("errorMessage", message.getErrorMessage());
+        return view;
     }
 
-    private Map<String, Object> sendEmail(String receiver, String content, Object carrierIdObj) {
-        MsgCarrier carrier = carrierService.resolveCarrier("EMAIL", carrierIdObj != null ? Long.valueOf(String.valueOf(carrierIdObj)) : null);
-        if (carrier == null) return error(400, "邮件服务未配置，请先创建邮件载体");
-        try {
-            Map<String, Object> config = objectMapper.readValue(carrier.getConfigJson(), Map.class);
-            String host = String.valueOf(config.getOrDefault("host", "smtp.qq.com"));
-            int port = intVal(config.get("port"), 587);
-            String username = String.valueOf(config.getOrDefault("username", ""));
-            String password = String.valueOf(config.getOrDefault("password", ""));
-
-            JavaMailSenderImpl sender = new JavaMailSenderImpl();
-            sender.setHost(host);
-            sender.setPort(port);
-            sender.setUsername(username);
-            sender.setPassword(password);
-
-            Properties props = sender.getJavaMailProperties();
-            props.put("mail.smtp.auth", "true");
-            if (port == 465) {
-                props.put("mail.smtp.ssl.enable", "true");
-                sender.setProtocol("smtps");
-            } else {
-                props.put("mail.smtp.starttls.enable", "true");
-            }
-
-            MimeMessage mime = sender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(mime, false, "UTF-8");
-            helper.setFrom(username);
-            helper.setTo(receiver);
-            helper.setSubject("消息通知");
-            helper.setText(content != null ? content : "");
-            sender.send(mime);
-
-            MsgMessage msg = new MsgMessage();
-            msg.setReceiver(receiver);
-            msg.setRenderedContent(content);
-            msg.setStatus("SUCCESS");
-            msg.setCarrierId(carrier.getCarrierId());
-            msg.setSendTime(LocalDateTime.now());
-            msg.setCreatedAt(LocalDateTime.now());
-            msgMessageMapper.insert(msg);
-            return ok(Map.of("messageId", msg.getMessageId()));
-        } catch (Exception e) {
-            return error(500, "邮件发送失败: " + e.getMessage());
-        }
+    private String stringVal(Object value) { return value == null ? null : String.valueOf(value); }
+    private Long longVal(Object value) { return value == null ? null : Long.valueOf(String.valueOf(value)); }
+    private int intVal(Object value, int defaultValue) { return value == null ? defaultValue : Integer.parseInt(String.valueOf(value)); }
+    private String truncate(String message, int max) {
+        return (message == null || message.length() <= max) ? message : message.substring(0, max);
     }
-
-    private Map<String, Object> sendSms(String receiver, String content, Object carrierIdObj) {
-        MsgCarrier carrier = carrierService.resolveCarrier("SMS", carrierIdObj != null ? Long.valueOf(String.valueOf(carrierIdObj)) : null);
-        if (carrier == null) return error(400, "未找到可用的短信载体");
-        try {
-            Map<String, Object> config = objectMapper.readValue(carrier.getConfigJson(), Map.class);
-            String accountSid = String.valueOf(config.get("accountSid"));
-            String authToken = String.valueOf(config.get("authToken"));
-            String appId = String.valueOf(config.get("appId"));
-            String templateId = String.valueOf(config.getOrDefault("templateId", "1"));
-
-            com.cloopen.rest.sdk.CCPRestSmsSDK sdk = new com.cloopen.rest.sdk.CCPRestSmsSDK();
-            sdk.init("app.cloopen.com", "8883");
-            sdk.setAccount(accountSid, authToken);
-            sdk.setAppId(appId);
-            sdk.setBodyType(com.cloopen.rest.sdk.BodyType.Type_JSON);
-            HashMap<String, Object> resp = sdk.sendTemplateSMS(receiver, templateId, new String[]{content, "5"});
-
-            MsgMessage msg = new MsgMessage();
-            msg.setReceiver(receiver);
-            msg.setRenderedContent(content);
-            msg.setCarrierId(carrier.getCarrierId());
-            msg.setSendTime(LocalDateTime.now());
-            msg.setCreatedAt(LocalDateTime.now());
-
-            if ("000000".equals(resp.get("statusCode"))) {
-                msg.setStatus("SUCCESS");
-                msgMessageMapper.insert(msg);
-                return ok(Map.of("messageId", msg.getMessageId()));
-            } else {
-                msg.setStatus("FAILED");
-                msgMessageMapper.insert(msg);
-                return error(500, "短信发送失败: " + resp.get("statusMsg"));
-            }
-        } catch (Exception e) {
-            return error(500, "短信发送异常: " + e.getMessage());
-        }
-    }
-
-    private int intVal(Object v, int d) { return v == null ? d : Integer.parseInt(String.valueOf(v)); }
-    private Map<String, Object> ok() { return Map.of("code", 0, "message", "ok"); }
-    private Map<String, Object> ok(Object data) { return Map.of("code", 0, "message", "ok", "data", data); }
-    private Map<String, Object> error(int code, String msg) { return Map.of("code", code, "message", msg); }
 }
