@@ -1,18 +1,28 @@
 package org.example.messageservice.service;
 
+import org.example.messageservice.support.ServiceResults;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
+/**
+ * 消息服务门面：发送、验证码、模板、变量、载体
+ */
 @Service
 public class MessageService {
 
     @Autowired
     private VerificationCodeService verificationCodeService;
+
     @Autowired
     private MessageDispatchService messageDispatchService;
+
     @Autowired
     private TemplateService templateService;
+
     @Autowired
     private CarrierService carrierService;
 
@@ -46,7 +56,15 @@ public class MessageService {
         return verificationCodeService.sendPhoneCode(phone, scene);
     }
     public Map<String, Object> verifyCode(Map<String, Object> request) {
-        return verificationCodeService.verify(request);
+        String credentialType = (String) request.get("credentialType");
+        String target = (String) request.get("target");
+        String scene = (String) request.get("scene");
+        String code = (String) request.get("code");
+        return verificationCodeService.verify(credentialType, target, scene, code);
+    }
+    public Map<String, Object> sendRegistrationConfirmEmail(Map<String, Object> request) {
+        String email = (String) request.get("email");
+        return verificationCodeService.sendRegistrationConfirmEmail(email);
     }
 
     public Map<String, Object> createTemplate(Map<String, Object> request) {

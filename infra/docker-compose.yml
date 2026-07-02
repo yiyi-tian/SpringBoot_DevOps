@@ -62,11 +62,14 @@ services:
         SERVICE_PORT: 8081
     container_name: devops-user-service
     networks: [devops]
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DEVOPS_INTERNAL_TOKEN: ${DEVOPS_INTERNAL_TOKEN:-dev-internal-secret}
     depends_on:
       mysql:
         condition: service_healthy
-    ports:
-      - "8081:8081"
+    expose:
+      - "8081"
     volumes:
       - access_logs:/app/logs/access
 
@@ -79,11 +82,16 @@ services:
         SERVICE_PORT: 8082
     container_name: devops-message-service
     networks: [devops]
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DEVOPS_INTERNAL_TOKEN: ${DEVOPS_INTERNAL_TOKEN:-dev-internal-secret}
     depends_on:
       mysql:
         condition: service_healthy
-    ports:
-      - "8082:8082"
+      redis:
+        condition: service_started
+    expose:
+      - "8082"
     volumes:
       - access_logs:/app/logs/access
 
@@ -96,13 +104,16 @@ services:
         SERVICE_PORT: 8083
     container_name: devops-log-service
     networks: [devops]
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DEVOPS_INTERNAL_TOKEN: ${DEVOPS_INTERNAL_TOKEN:-dev-internal-secret}
     depends_on:
       mysql:
         condition: service_healthy
       clickhouse:
         condition: service_started
-    ports:
-      - "8083:8083"
+    expose:
+      - "8083"
     volumes:
       - access_logs:/app/logs/access
 
@@ -117,6 +128,11 @@ services:
     networks: [devops]
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      DEVOPS_INTERNAL_TOKEN: ${DEVOPS_INTERNAL_TOKEN:-dev-internal-secret}
+      DEVOPS_SERVICES_USER_URL: http://user-service:8081
+      DEVOPS_SERVICES_MESSAGE_URL: http://message-service:8082
+      DEVOPS_SERVICES_LOG_URL: http://log-service:8083
+      SPRING_DATA_REDIS_HOST: redis
     depends_on:
       - user-service
       - message-service

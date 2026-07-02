@@ -21,7 +21,7 @@
 ### Changed
 
 - Maven 版本升至 `0.2.0-SNAPSHOT`
-- 访问日志 `output-dir` 改为相对路径 `shared-logs/access`（便于 clone 后直接开发）
+- Access log path fix: IDE `../shared-logs/access`, Docker `logs/access` + shared volume
 
 ## [0.0.1] - 更早
 

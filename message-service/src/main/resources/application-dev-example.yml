@@ -12,20 +12,40 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
   data:
     redis:
-      host: localhost
-      password: your_redis_password   #没有密码就删除这行
+      host: your_redis_host
       port: 6379
-      database: 1
+      password: your_redis_password
       timeout: 10000ms
-      
+  mail:
+    host: smtp.qq.com
+    port: 465
+    username: your_email@qq.com
+    password: your_smtp_auth_code
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
+          socketFactory:
+            class: javax.net.ssl.SSLSocketFactory
+            port: 465
+          timeout: 5000
+          connectiontimeout: 5000
+          writetimeout: 5000
+        debug: false
+
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
 
 devops:
+  mail:
+    from: your_email@qq.com
   access-log:
     service-name: message
-    output-dir: shared-logs/access
+    output-dir: ../shared-logs/access
     file-pattern: "access-{date}.jsonl"
     log-body: true
     body-on-error-only: true

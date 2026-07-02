@@ -1,11 +1,17 @@
 package org.example.userservice.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import org.example.common.auth.CredentialType;
+import org.example.common.auth.CredentialValidator;
 import org.example.userservice.entity.*;
 import org.example.userservice.mapper.*;
+import org.example.userservice.support.RbacDefaults;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -15,6 +21,8 @@ import java.util.*;
  */
 @Service
 public class UserService {
+
+    private static final Logger log = LoggerFactory.getLogger(UserService.class);
 
     @Autowired
     private UserMapper userMapper;
@@ -53,25 +61,36 @@ public class UserService {
     /**
      * 用户注册
      */
+    @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> register(Map<String, Object> request) {
         Map<String, Object> result = new HashMap<>();
 
-        String credentialType = (String) request.get("credentialType");
+        String credentialTypeStr = (String) request.get("credentialType");
         String credential = (String) request.get("credential");
         String password = (String) request.get("password");
         String code = (String) request.get("code"); // 验证码注册时，密码为空
 
-        if (credentialType == null || credential == null || (password == null && code == null)) {
+        if (credentialTypeStr == null || credential == null || (password == null && code == null)) {
             result.put("code", 400);
             result.put("message", "参数不完整：credentialType, credential, password 必填");
             return result;
         }
 
-        if (!credentialType.equals("PHONE") && !credentialType.equals("EMAIL") && !credentialType.equals("USERNAME")) {
+        CredentialType credentialType = CredentialType.parse(credentialTypeStr);
+        if (credentialType == null) {
             result.put("code", 400);
             result.put("message", "credentialType 必须为 PHONE / EMAIL / USERNAME");
             return result;
         }
+
+        Optional<String> formatError = CredentialValidator.validate(credentialType, credential);
+        if (formatError.isPresent()) {
+            result.put("code", 400);
+            result.put("message", formatError.get());
+            return result;
+        }
+        credential = CredentialValidator.normalizeCredential(credentialType, credential);
+        credentialTypeStr = credentialType.name();
 
         if (password != null && !password.isEmpty() && password.length() < 6) {
             result.put("code", 400);
@@ -80,9 +99,15 @@ public class UserService {
         }
 
         QueryWrapper<UserAuth> authWrapper = new QueryWrapper<>();
-        authWrapper.eq("identity_type", credentialType);
+        authWrapper.eq("identity_type", credentialTypeStr);
         authWrapper.eq("identifier", credential);
-        if (userAuthMapper.selectOne(authWrapper) != null) {
+        UserAuth existingAuth = userAuthMapper.selectOne(authWrapper);
+        if (existingAuth != null) {
+            User existingUser = userMapper.selectById(existingAuth.getUserId());
+            if (existingUser != null && existingUser.getIsDeleted() != 1
+                    && "DEREGISTERED".equalsIgnoreCase(existingUser.getStatus())) {
+                return reactivateDeregisteredUser(existingUser, existingAuth, credential, password);
+            }
             result.put("code", 409);
             result.put("message", "该凭证已被注册");
             return result;
@@ -113,18 +138,75 @@ public class UserService {
 
         UserAuth userAuth = new UserAuth();
         userAuth.setUserId(user.getUserId());
-        userAuth.setIdentityType(credentialType);
+        userAuth.setIdentityType(credentialTypeStr);
         userAuth.setIdentifier(credential);
         userAuth.setSecretHash(password != null && !password.isEmpty() ? secretHash : "");
         userAuth.setVerified(1);
         userAuth.setCreatedAt(LocalDateTime.now());
         userAuthMapper.insert(userAuth);
 
+        assignDefaultGroups(user.getUserId());
+
         result.put("code", 0);
         result.put("message", "ok");
         Map<String, Object> data = new HashMap<>();
         data.put("userId", user.getUserId());
         result.put("data", data);
+        return result;
+    }
+
+    private Map<String, Object> reactivateDeregisteredUser(User user, UserAuth userAuth,
+                                                           String credential, String password) {
+        Map<String, Object> result = new HashMap<>();
+
+        user.setStatus("ACTIVE");
+        user.setDisplayName(credential);
+        user.setUpdatedAt(LocalDateTime.now());
+        userMapper.updateById(user);
+
+        userAuth.setSecretHash(passwordEncoder.encode(password));
+        userAuthMapper.updateById(userAuth);
+
+        assignDefaultGroups(user.getUserId());
+
+        result.put("code", 0);
+        result.put("message", "ok");
+        Map<String, Object> data = new HashMap<>();
+        data.put("userId", user.getUserId());
+        result.put("data", data);
+        return result;
+    }
+
+    /**
+     * 注册补偿回滚：物理删除 user + user_auth（TopBiz 邮件确认失败时调用）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> compensateRegister(Map<String, Object> request) {
+        Map<String, Object> result = new HashMap<>();
+        Object userIdObj = request.get("userId");
+        if (userIdObj == null) {
+            result.put("code", 400);
+            result.put("message", "userId 必填");
+            return result;
+        }
+        Long userId = Long.valueOf(String.valueOf(userIdObj));
+
+        QueryWrapper<UserAuth> authWrapper = new QueryWrapper<>();
+        authWrapper.eq("user_id", userId);
+        userAuthMapper.delete(authWrapper);
+
+        QueryWrapper<UserGroup> ugWrapper = new QueryWrapper<>();
+        ugWrapper.eq("user_id", userId);
+        userGroupMapper.delete(ugWrapper);
+
+        QueryWrapper<UserPermission> upWrapper = new QueryWrapper<>();
+        upWrapper.eq("user_id", userId);
+        userPermissionMapper.delete(upWrapper);
+
+        userMapper.deleteById(userId);
+
+        result.put("code", 0);
+        result.put("message", "ok");
         return result;
     }
 
@@ -140,10 +222,29 @@ public class UserService {
         String code = (String) request.get("code"); // 验证码登录时，密码为空
         String clientIp = (String) request.get("clientIp");
         String userAgent = (String) request.get("userAgent");
+        boolean codeVerified = Boolean.TRUE.equals(request.get("codeVerified"));
 
         if (credentialType == null || credential == null || (password == null && code == null)) {
             result.put("code", 400);
             result.put("message", "参数不完整");
+            return result;
+        }
+
+        CredentialType type = CredentialType.parse(credentialType);
+        if (type != null) {
+            Optional<String> formatError = CredentialValidator.validate(type, credential);
+            if (formatError.isPresent()) {
+                result.put("code", 400);
+                result.put("message", formatError.get());
+                return result;
+            }
+            credential = CredentialValidator.normalizeCredential(type, credential);
+            credentialType = type.name();
+        }
+
+        if (!codeVerified && (password == null || password.isEmpty())) {
+            result.put("code", 400);
+            result.put("message", "参数不完整：需要密码或验证码登录");
             return result;
         }
 
@@ -158,10 +259,12 @@ public class UserService {
             return result;
         }
 
-        if (password != null && !password.isEmpty() && !passwordEncoder.matches(password, userAuth.getSecretHash())) {
-            result.put("code", 401);
-            result.put("message", "密码错误");
-            return result;
+        if (!codeVerified) {
+            if (!passwordEncoder.matches(password, userAuth.getSecretHash())) {
+                result.put("code", 401);
+                result.put("message", "密码错误");
+                return result;
+            }
         }
 
         User user = userMapper.selectById(userAuth.getUserId());
@@ -175,6 +278,11 @@ public class UserService {
         if ("LOCKED".equals(user.getStatus())) {
             result.put("code", 403);
             result.put("message", "账户已被锁定，请联系管理员");
+            return result;
+        }
+        if ("DEREGISTERED".equalsIgnoreCase(user.getStatus())) {
+            result.put("code", 403);
+            result.put("message", "账户已注销，无法登录");
             return result;
         }
         if ("RISKY".equals(user.getStatus())) {
@@ -326,6 +434,65 @@ public class UserService {
     }
 
     /**
+     * 查询当前用户完整信息（User 实体 + 凭证列表）
+     */
+    public Map<String, Object> getUserProfile(Long userId) {
+        Map<String, Object> result = new HashMap<>();
+
+        User user = userMapper.selectById(userId);
+        if (user == null || user.getIsDeleted() == 1) {
+            result.put("code", 404);
+            result.put("message", "用户不存在");
+            return result;
+        }
+
+        QueryWrapper<UserAuth> authWrapper = new QueryWrapper<>();
+        authWrapper.eq("user_id", userId);
+        List<Map<String, Object>> credentials = new ArrayList<>();
+        for (UserAuth auth : userAuthMapper.selectList(authWrapper)) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("identityType", auth.getIdentityType());
+            item.put("identifier", maskIdentifier(auth.getIdentityType(), auth.getIdentifier()));
+            item.put("verified", auth.getVerified());
+            credentials.add(item);
+        }
+
+        result.put("code", 0);
+        result.put("message", "ok");
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("userId", user.getUserId());
+        data.put("displayName", user.getDisplayName());
+        data.put("sex", user.getSex());
+        data.put("status", user.getStatus());
+        data.put("lastLoginAt", user.getLastLoginAt() != null ? user.getLastLoginAt().toString() : null);
+        data.put("lastLoginIp", user.getLastLoginIp());
+        data.put("createdAt", user.getCreatedAt() != null ? user.getCreatedAt().toString() : null);
+        data.put("updatedAt", user.getUpdatedAt() != null ? user.getUpdatedAt().toString() : null);
+        data.put("credentials", credentials);
+        result.put("data", data);
+        return result;
+    }
+
+    private static String maskIdentifier(String identityType, String identifier) {
+        if (identifier == null || identifier.isEmpty()) {
+            return identifier;
+        }
+        if ("EMAIL".equalsIgnoreCase(identityType) && identifier.contains("@")) {
+            int at = identifier.indexOf('@');
+            String local = identifier.substring(0, at);
+            String domain = identifier.substring(at);
+            if (local.length() <= 2) {
+                return "**" + domain;
+            }
+            return local.charAt(0) + "***" + local.charAt(local.length() - 1) + domain;
+        }
+        if (identifier.length() <= 4) {
+            return "****";
+        }
+        return identifier.substring(0, 2) + "****" + identifier.substring(identifier.length() - 2);
+    }
+
+    /**
      * 重置密码（忘记密码 — 验证码核验由 topbiz 完成）
      */
     public Map<String, Object> resetPassword(Map<String, Object> request) {
@@ -363,8 +530,14 @@ public class UserService {
         userAuth.setSecretHash(passwordEncoder.encode(newPassword));
         userAuthMapper.updateById(userAuth);
 
+        Long userId = userAuth.getUserId();
+        terminateAllActiveSessions(userId);
+
         result.put("code", 0);
         result.put("message", "ok");
+        Map<String, Object> data = new HashMap<>();
+        data.put("userId", userId);
+        result.put("data", data);
         return result;
     }
 
@@ -462,6 +635,8 @@ public class UserService {
         user.setUpdatedAt(LocalDateTime.now());
         userMapper.updateById(user);
 
+        terminateAllActiveSessions(userId);
+
         result.put("code", 0);
         result.put("message", "ok");
         return result;
@@ -484,7 +659,7 @@ public class UserService {
         Map<String, Object> result = new HashMap<>();
         Set<String> permCodes = new LinkedHashSet<>();
 
-        // 1. 直接权限
+        // 1. 直接权限（仅聚合 status=ACTIVE 的授权记录）
         QueryWrapper<UserPermission> upWrapper = new QueryWrapper<>();
         upWrapper.eq("user_id", userId);
         upWrapper.eq("status", "ACTIVE");
@@ -495,10 +670,19 @@ public class UserService {
             }
         }
 
-        // 2. 通过分组的权限
+        // 2. 通过分组的权限（仅聚合 status=ACTIVE 的授权记录）
         QueryWrapper<UserGroup> ugWrapper = new QueryWrapper<>();
         ugWrapper.eq("user_id", userId);
+        List<String> roles = new ArrayList<>();
+        boolean isAdmin = false;
         for (UserGroup ug : userGroupMapper.selectList(ugWrapper)) {
+            Group group = groupMapper.selectById(ug.getGroupId());
+            if (group != null && group.getIsDeleted() == 0) {
+                roles.add(group.getName());
+                if (group.getIsAdmin() != null && group.getIsAdmin() == 1) {
+                    isAdmin = true;
+                }
+            }
             QueryWrapper<GroupPermission> gpWrapper = new QueryWrapper<>();
             gpWrapper.eq("group_id", ug.getGroupId());
             gpWrapper.eq("status", "ACTIVE");
@@ -523,10 +707,43 @@ public class UserService {
         Map<String, Object> data = new HashMap<>();
         data.put("permissions", new ArrayList<>(permCodes));
         data.put("roles", roles);
+        if (isAdmin) {
+            data.put("is_admin", true);
+        }
         result.put("data", data);
         return result;
     }
-    
+
+    private void assignDefaultGroups(Long userId) {
+        joinGroupIfAbsent(userId, RbacDefaults.GROUP_MEMBER);
+        if (RbacDefaults.FIRST_ADMIN_USER_ID == userId) {
+            joinGroupIfAbsent(userId, RbacDefaults.GROUP_ADMIN);
+        }
+    }
+
+    private void joinGroupIfAbsent(Long userId, String groupName) {
+        QueryWrapper<Group> groupWrapper = new QueryWrapper<>();
+        groupWrapper.eq("name", groupName);
+        groupWrapper.eq("is_deleted", 0);
+        Group group = groupMapper.selectOne(groupWrapper);
+        if (group == null) {
+            log.warn("默认用户组 {} 不存在，跳过赋权（请执行 docs/sql/02b_user_rbac_seed.sql）", groupName);
+            return;
+        }
+
+        QueryWrapper<UserGroup> ugWrapper = new QueryWrapper<>();
+        ugWrapper.eq("user_id", userId);
+        ugWrapper.eq("group_id", group.getGroupId());
+        if (userGroupMapper.selectCount(ugWrapper) > 0) {
+            return;
+        }
+
+        UserGroup userGroup = new UserGroup();
+        userGroup.setUserId(userId);
+        userGroup.setGroupId(group.getGroupId());
+        userGroupMapper.insert(userGroup);
+    }
+
     /**
      * 查询用户所属分组
      */
@@ -616,6 +833,8 @@ public class UserService {
         userAuth.setVerified(1);
         userAuth.setCreatedAt(LocalDateTime.now());
         userAuthMapper.insert(userAuth);
+
+        assignDefaultGroups(user.getUserId());
 
         result.put("code", 0);
         result.put("message", "ok");
@@ -1447,6 +1666,10 @@ public class UserService {
 
         QueryWrapper<UserPermission> wrapper = new QueryWrapper<>();
         wrapper.eq("user_id", userId);
+        String statusFilter = (String) params.get("status");
+        if (statusFilter != null && !statusFilter.isBlank()) {
+            wrapper.eq("status", statusFilter.trim());
+        }
         List<UserPermission> upList = userPermissionMapper.selectList(wrapper);
 
         List<Map<String, Object>> list = new ArrayList<>();
@@ -1459,6 +1682,8 @@ public class UserService {
                 item.put("permId", p.getPermId());
                 item.put("permCode", p.getPermCode());
                 item.put("permName", p.getPermName());
+                item.put("status", up.getStatus());
+                item.put("createdAt", up.getCreatedAt() != null ? up.getCreatedAt().toString() : null);
                 list.add(item);
             }
         }
@@ -2068,13 +2293,14 @@ public class UserService {
     // ==================== v0.4.0: 多端会话管理 ====================
 
     /**
-     * 注册用户会话（登录成功后调用）
+     * 注册用户会话（登录成功后调用，按 userId + deviceId upsert）
      */
     public Map<String, Object> registerSession(Map<String, Object> request) {
         Map<String, Object> result = new HashMap<>();
 
         Object userIdObj = request.get("userId");
         String sessionId = (String) request.get("sessionId");
+        String deviceId = (String) request.get("deviceId");
         String deviceType = (String) request.get("deviceType");
         String clientIp = (String) request.get("clientIp");
         String userAgent = (String) request.get("userAgent");
@@ -2084,28 +2310,51 @@ public class UserService {
             result.put("message", "userId 和 sessionId 必填");
             return result;
         }
+        if (deviceId == null || deviceId.isBlank()) {
+            result.put("code", 400);
+            result.put("message", "deviceId 必填");
+            return result;
+        }
 
         Long userId = Long.valueOf(String.valueOf(userIdObj));
+        deviceId = deviceId.trim();
 
-        // 检查是否已有该 sessionId 的记录（防止重复注册）
-        QueryWrapper<UserSession> wrapper = new QueryWrapper<>();
-        wrapper.eq("session_id", sessionId);
-        if (userSessionMapper.selectCount(wrapper) > 0) {
+        QueryWrapper<UserSession> bySession = new QueryWrapper<>();
+        bySession.eq("session_id", sessionId);
+        if (userSessionMapper.selectCount(bySession) > 0) {
             result.put("code", 0);
             result.put("message", "session already registered");
             return result;
         }
 
-        UserSession session = new UserSession();
-        session.setUserId(userId);
-        session.setSessionId(sessionId);
-        session.setDeviceType(deviceType != null ? deviceType : "UNKNOWN");
-        session.setClientIp(clientIp);
-        session.setUserAgent(userAgent);
-        session.setLoginAt(LocalDateTime.now());
-        session.setLastActiveAt(LocalDateTime.now());
-        session.setStatus("ACTIVE");
-        userSessionMapper.insert(session);
+        QueryWrapper<UserSession> byDevice = new QueryWrapper<>();
+        byDevice.eq("user_id", userId);
+        byDevice.eq("device_id", deviceId);
+        UserSession existing = userSessionMapper.selectOne(byDevice);
+
+        LocalDateTime now = LocalDateTime.now();
+        if (existing != null) {
+            existing.setSessionId(sessionId);
+            existing.setDeviceType(deviceType != null ? deviceType : "UNKNOWN");
+            existing.setClientIp(clientIp);
+            existing.setUserAgent(userAgent);
+            existing.setLoginAt(now);
+            existing.setLastActiveAt(now);
+            existing.setStatus("ACTIVE");
+            userSessionMapper.updateById(existing);
+        } else {
+            UserSession session = new UserSession();
+            session.setUserId(userId);
+            session.setDeviceId(deviceId);
+            session.setSessionId(sessionId);
+            session.setDeviceType(deviceType != null ? deviceType : "UNKNOWN");
+            session.setClientIp(clientIp);
+            session.setUserAgent(userAgent);
+            session.setLoginAt(now);
+            session.setLastActiveAt(now);
+            session.setStatus("ACTIVE");
+            userSessionMapper.insert(session);
+        }
 
         result.put("code", 0);
         result.put("message", "ok");
@@ -2128,6 +2377,7 @@ public class UserService {
         for (UserSession s : sessions) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", s.getId());
+            item.put("deviceId", s.getDeviceId());
             item.put("sessionId", s.getSessionId());
             item.put("deviceType", s.getDeviceType());
             item.put("clientIp", s.getClientIp());
@@ -2142,6 +2392,44 @@ public class UserService {
         Map<String, Object> data = new HashMap<>();
         data.put("sessions", sessionList);
         data.put("count", sessionList.size());
+        result.put("data", data);
+        return result;
+    }
+
+    /**
+     * 终止指定设备（标记为 TERMINATED，返回 sessionId 供 BFF 清理 Redis）
+     */
+    public Map<String, Object> terminateDevice(Long userId, String deviceId) {
+        Map<String, Object> result = new HashMap<>();
+
+        if (deviceId == null || deviceId.isBlank()) {
+            result.put("code", 400);
+            result.put("message", "deviceId 不能为空");
+            return result;
+        }
+
+        QueryWrapper<UserSession> wrapper = new QueryWrapper<>();
+        wrapper.eq("user_id", userId);
+        wrapper.eq("device_id", deviceId.trim());
+        wrapper.eq("status", "ACTIVE");
+        UserSession session = userSessionMapper.selectOne(wrapper);
+
+        if (session == null) {
+            result.put("code", 404);
+            result.put("message", "设备不存在或已下线");
+            return result;
+        }
+
+        session.setStatus("TERMINATED");
+        session.setLastActiveAt(LocalDateTime.now());
+        userSessionMapper.updateById(session);
+
+        result.put("code", 0);
+        result.put("message", "ok");
+        Map<String, Object> data = new HashMap<>();
+        data.put("deviceId", deviceId);
+        data.put("sessionId", session.getSessionId());
+        data.put("userId", userId);
         result.put("data", data);
         return result;
     }
@@ -2170,21 +2458,39 @@ public class UserService {
         result.put("message", "ok");
         Map<String, Object> data = new HashMap<>();
         data.put("sessionId", sessionId);
+        data.put("deviceId", session.getDeviceId());
         data.put("userId", session.getUserId());
         result.put("data", data);
         return result;
     }
 
+    private void terminateAllActiveSessions(Long userId) {
+        QueryWrapper<UserSession> wrapper = new QueryWrapper<>();
+        wrapper.eq("user_id", userId);
+        wrapper.eq("status", "ACTIVE");
+        List<UserSession> sessions = userSessionMapper.selectList(wrapper);
+        for (UserSession s : sessions) {
+            s.setStatus("TERMINATED");
+            s.setLastActiveAt(LocalDateTime.now());
+            userSessionMapper.updateById(s);
+        }
+    }
+
     /**
-     * 终止用户除当前会话外的所有其他活跃会话
+     * 终止用户除当前会话/设备外的所有其他活跃会话
      */
-    public Map<String, Object> terminateOtherSessions(Long userId, String currentSessionId) {
+    public Map<String, Object> terminateOtherSessions(Long userId, String currentSessionId, String currentDeviceId) {
         Map<String, Object> result = new HashMap<>();
 
         QueryWrapper<UserSession> wrapper = new QueryWrapper<>();
         wrapper.eq("user_id", userId);
         wrapper.eq("status", "ACTIVE");
-        wrapper.ne("session_id", currentSessionId);
+        if (currentSessionId != null && !currentSessionId.isBlank()) {
+            wrapper.ne("session_id", currentSessionId);
+        }
+        if (currentDeviceId != null && !currentDeviceId.isBlank()) {
+            wrapper.ne("device_id", currentDeviceId.trim());
+        }
         List<UserSession> others = userSessionMapper.selectList(wrapper);
 
         int count = 0;

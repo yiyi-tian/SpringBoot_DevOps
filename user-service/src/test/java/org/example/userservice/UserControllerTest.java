@@ -557,6 +557,7 @@ class UserControllerTest {
         Map<String, Object> body = new HashMap<>();
         body.put("userId", testUserId);
         body.put("sessionId", "ctrl-session-001");
+        body.put("deviceId", "ctrl-device-001");
         body.put("deviceType", "WEB");
         body.put("clientIp", "10.0.0.99");
 

@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS login_history (
 CREATE TABLE IF NOT EXISTS user_session (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id         BIGINT       NOT NULL,
+    device_id       VARCHAR(64)  NOT NULL,
     session_id      VARCHAR(255) NOT NULL,
     device_type     VARCHAR(20)  DEFAULT 'UNKNOWN',
     client_ip       VARCHAR(45),
@@ -90,3 +91,25 @@ CREATE TABLE IF NOT EXISTS user_session (
     last_active_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
     status          VARCHAR(20)  DEFAULT 'ACTIVE'
 );
+
+-- RBAC seed (aligned with docs/sql/02b_user_rbac_seed.sql)
+DELETE FROM group_permission WHERE group_id IN (1, 2);
+DELETE FROM `group` WHERE group_id IN (1, 2);
+DELETE FROM permission WHERE perm_id IN (1, 2, 3, 4, 5, 6, 7);
+
+INSERT INTO permission (perm_id, perm_code, perm_name, active) VALUES
+    (1, 'profile:read', 'profile read', 1),
+    (2, 'profile:write', 'profile write', 1),
+    (3, 'message:read', 'message read', 1),
+    (4, 'permissions:apply', 'permissions apply', 1),
+    (5, 'log:read', 'log read', 1),
+    (6, 'log:export', 'log export', 1),
+    (7, 'message:write', 'message write', 1);
+
+INSERT INTO `group` (group_id, name, description, is_admin, is_deleted) VALUES
+    (1, 'member', 'default member group', 0, 0),
+    (2, 'admin', 'admin group', 1, 0);
+
+INSERT INTO group_permission (group_id, perm_id, status) VALUES
+    (1, 1, 'ACTIVE'), (1, 2, 'ACTIVE'), (1, 3, 'ACTIVE'), (1, 4, 'ACTIVE'),
+    (2, 1, 'ACTIVE'), (2, 2, 'ACTIVE'), (2, 3, 'ACTIVE'), (2, 4, 'ACTIVE');

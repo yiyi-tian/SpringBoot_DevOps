@@ -1,15 +1,20 @@
 package org.example.messageservice.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-from com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.example.common.message.MessageConstants;
 import org.example.messageservice.entity.MsgCarrier;
 import org.example.messageservice.mapper.MsgCarrierMapper;
 import org.example.messageservice.support.ConfigMasker;
+import org.example.messageservice.support.ServiceResults;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class CarrierService {
@@ -17,80 +22,131 @@ public class CarrierService {
     @Autowired
     private MsgCarrierMapper carrierMapper;
 
+    @Autowired
+    private EmailSendService emailSendService;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public Map<String, Object> list(String channelType) {
-        QueryWrapper<MsgCarrier> w = new QueryWrapper<>();
-        w.isNull("deleted_at");
-        if (channelType != null && !channelType.isEmpty()) w.eq("channel_type", channelType);
-        List<MsgCarrier> list = carrierMapper.selectList(w);
-        list.forEach(c -> c.setConfigJson(ConfigMasker.maskJson(c.getConfigJson())));
-        return Map.of("code", 0, "message", "ok", "data", Map.of("carriers", list));
+        QueryWrapper<MsgCarrier> wrapper = new QueryWrapper<>();
+        wrapper.isNull("deleted_at");
+        if (channelType != null && !channelType.isBlank()) {
+            wrapper.eq("channel_type", channelType);
+        }
+        wrapper.orderByDesc("carrier_id");
+        List<Map<String, Object>> list = carrierMapper.selectList(wrapper).stream()
+                .map(this::toView)
+                .collect(Collectors.toList());
+        Map<String, Object> data = new HashMap<>();
+        data.put("list", list);
+        data.put("total", list.size());
+        return ServiceResults.ok(data);
     }
 
     public Map<String, Object> get(Long id) {
-        MsgCarrier c = carrierMapper.selectById(id);
-        if (c == null || c.getDeletedAt() != null) return Map.of("code", 404, "message", "载体不存在");
-        c.setConfigJson(ConfigMasker.maskJson(c.getConfigJson()));
-        return Map.of("code", 0, "message", "ok", "data", c);
+        MsgCarrier carrier = findActive(id);
+        if (carrier == null) {
+            return ServiceResults.error(404, "载体不存在");
+        }
+        return ServiceResults.ok(toView(carrier));
     }
 
-    public Map<String, Object> create(Map<String, Object> req) {
-        String name = (String) req.get("name");
-        String channelType = (String) req.get("channelType");
-        if (name == null || name.isEmpty()) return Map.of("code", 400, "message", "名称不能为空");
-        if (channelType == null || channelType.isEmpty()) return Map.of("code", 400, "message", "channelType 不能为空");
+    public Map<String, Object> create(Map<String, Object> request) {
+        String name = stringVal(request.get("name"));
+        String channelType = stringVal(request.get("channelType"));
+        if (name == null || name.isBlank()) {
+            return ServiceResults.error(400, "name 不能为空");
+        }
+        if (channelType == null || !MessageConstants.isMvpChannel(channelType)) {
+            return ServiceResults.error(400, "无效的 channelType");
+        }
 
-        MsgCarrier c = new MsgCarrier();
-        c.setName(name);
-        c.setProvider((String) req.getOrDefault("provider", ""));
-        c.setChannelType(channelType);
-        c.setConfigJson((String) req.getOrDefault("configJson", "{}"));
-        c.setEnabled(1);
-        c.setCreatedAt(LocalDateTime.now());
-        c.setUpdatedAt(LocalDateTime.now());
-        carrierMapper.insert(c);
-        return Map.of("code", 0, "message", "ok", "data", Map.of("carrierId", c.getCarrierId()));
+        MsgCarrier carrier = new MsgCarrier();
+        carrier.setName(name);
+        carrier.setChannelType(channelType);
+        carrier.setProvider(stringVal(request.get("provider")));
+        carrier.setConfigJson(toJson(request.get("configJson")));
+        carrier.setEnabled(boolVal(request.get("enabled"), 1));
+        carrier.setCreatedAt(LocalDateTime.now());
+        carrier.setUpdatedAt(LocalDateTime.now());
+        carrierMapper.insert(carrier);
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("carrierId", carrier.getCarrierId());
+        return ServiceResults.ok(data);
     }
 
-    public Map<String, Object> update(Long id, Map<String, Object> req) {
-        MsgCarrier c = carrierMapper.selectById(id);
-        if (c == null || c.getDeletedAt() != null) return Map.of("code", 404, "message", "载体不存在");
-        if (req.containsKey("name")) c.setName((String) req.get("name"));
-        if (req.containsKey("provider")) c.setProvider((String) req.get("provider"));
-        if (req.containsKey("configJson")) c.setConfigJson((String) req.get("configJson"));
-        if (req.containsKey("enabled")) c.setEnabled((Integer) req.get("enabled"));
-        c.setUpdatedAt(LocalDateTime.now());
-        carrierMapper.updateById(c);
-        return Map.of("code", 0, "message", "ok");
+    public Map<String, Object> update(Long id, Map<String, Object> request) {
+        MsgCarrier carrier = findActive(id);
+        if (carrier == null) {
+            return ServiceResults.error(404, "载体不存在");
+        }
+        if (request.containsKey("name")) {
+            carrier.setName(stringVal(request.get("name")));
+        }
+        if (request.containsKey("provider")) {
+            carrier.setProvider(stringVal(request.get("provider")));
+        }
+        if (request.containsKey("configJson")) {
+            carrier.setConfigJson(toJson(request.get("configJson")));
+        }
+        if (request.containsKey("enabled")) {
+            carrier.setEnabled(boolVal(request.get("enabled"), carrier.getEnabled()));
+        }
+        carrier.setUpdatedAt(LocalDateTime.now());
+        carrierMapper.updateById(carrier);
+        return ServiceResults.ok();
     }
 
     public Map<String, Object> delete(Long id) {
-        MsgCarrier c = carrierMapper.selectById(id);
-        if (c == null) return Map.of("code", 404, "message", "载体不存在");
-        c.setDeletedAt(LocalDateTime.now());
-        carrierMapper.updateById(c);
-        return Map.of("code", 0, "message", "删除成功");
+        MsgCarrier carrier = findActive(id);
+        if (carrier == null) {
+            return ServiceResults.error(404, "载体不存在");
+        }
+        carrier.setDeletedAt(LocalDateTime.now());
+        carrier.setEnabled(0);
+        carrier.setUpdatedAt(LocalDateTime.now());
+        carrierMapper.updateById(carrier);
+        return ServiceResults.ok();
     }
 
     public Map<String, Object> test(Long id, String testTo) {
-        MsgCarrier c = carrierMapper.selectById(id);
-        if (c == null || c.getDeletedAt() != null) return Map.of("code", 404, "message", "载体不存在");
-        System.out.println("载体连通性测试: " + c.getName() + " channel=" + c.getChannelType());
-        return Map.of("code", 0, "message", "测试成功（控制台输出）");
+        MsgCarrier carrier = findActive(id);
+        if (carrier == null) {
+            return ServiceResults.error(404, "载体不存在");
+        }
+        if (!"EMAIL".equals(carrier.getChannelType())) {
+            return ServiceResults.error(400, "当前仅支持 EMAIL 载体测试");
+        }
+        if (testTo == null || testTo.isBlank()) {
+            return ServiceResults.error(400, "testTo 不能为空");
+        }
+        try {
+            emailSendService.send(carrier, testTo, "DevOps 载体连通性测试", "这是一封测试邮件，说明 SMTP 配置可用。");
+            return ServiceResults.ok(Map.of("success", true));
+        } catch (Exception e) {
+            return ServiceResults.error(502, e.getMessage());
+        }
     }
 
     public MsgCarrier resolveCarrier(String channelType, Long carrierId) {
         if (carrierId != null) {
-            MsgCarrier c = carrierMapper.selectById(carrierId);
-            if (c != null && c.getDeletedAt() == null && c.getEnabled() == 1) return c;
+            MsgCarrier carrier = findActive(carrierId);
+            if (carrier != null && channelType.equals(carrier.getChannelType()) && carrier.getEnabled() == 1) {
+                return carrier;
+            }
+            return null;
         }
-        QueryWrapper<MsgCarrier> w = new QueryWrapper<>();
-        w.eq("channel_type", channelType).eq("enabled", 1).isNull("deleted_at").last("LIMIT 1");
-        return carrierMapper.selectOne(w);
+        QueryWrapper<MsgCarrier> wrapper = new QueryWrapper<>();
+        wrapper.eq("channel_type", channelType);
+        wrapper.eq("enabled", 1);
+        wrapper.isNull("deleted_at");
+        wrapper.orderByAsc("carrier_id");
+        wrapper.last("LIMIT 1");
+        return carrierMapper.selectOne(wrapper);
     }
 
-        private MsgCarrier findActive(Long id) {
+    private MsgCarrier findActive(Long id) {
         if (id == null) {
             return null;
         }

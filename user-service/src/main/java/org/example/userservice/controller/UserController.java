@@ -16,6 +16,11 @@ public class UserController {
         return userService.register(request);
     }
 
+    @PostMapping("/internal/user/register/compensate")
+    public Map<String, Object> compensateRegister(@RequestBody Map<String, Object> request) {
+        return userService.compensateRegister(request);
+    }
+
     @PostMapping("/internal/user/login")
     public Map<String, Object> login(@RequestBody Map<String, Object> request) {
         return userService.login(request);
@@ -158,6 +163,11 @@ public class UserController {
         return userService.updateProfile(request);
     }
 
+    @GetMapping("/internal/user/{userId}/profile")
+    public Map<String, Object> getUserProfile(@PathVariable Long userId) {
+        return userService.getUserProfile(userId);
+    }
+
     @PostMapping("/internal/user/password/reset")
     public Map<String, Object> resetPassword(@RequestBody Map<String, Object> request) {
         return userService.resetPassword(request);
@@ -275,10 +285,23 @@ public class UserController {
         return userService.terminateSession(sessionId);
     }
 
+<<<<<<< HEAD
     @DeleteMapping("/internal/user/{userId}/sessions/others")
     public Map<String, Object> terminateOtherSessions(@PathVariable Long userId, @RequestBody Map<String, Object> request) {
         String currentSessionId = (String) request.get("currentSessionId");
         return userService.terminateOtherSessions(userId, currentSessionId);
+=======
+    @DeleteMapping("/internal/user/{userId}/devices/{deviceId}")
+    public Map<String, Object> terminateDevice(@PathVariable Long userId, @PathVariable String deviceId) {
+        return userService.terminateDevice(userId, deviceId);
+    }
+
+    @DeleteMapping("/internal/user/{userId}/sessions/others")
+    public Map<String, Object> terminateOtherSessions(@PathVariable Long userId, @RequestBody Map<String, Object> request) {
+        String currentSessionId = (String) request.get("currentSessionId");
+        String currentDeviceId = (String) request.get("currentDeviceId");
+        return userService.terminateOtherSessions(userId, currentSessionId, currentDeviceId);
+>>>>>>> develop2
     }
 
     @PostMapping("/internal/user/sessions/clean-stale")

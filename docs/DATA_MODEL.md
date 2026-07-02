@@ -143,6 +143,9 @@ erDiagram
 
 ### 3.2 表结构
 
+> **MVP 已建表**（见 `docs/sql/03_devops_message.sql`）：`msg_carrier`、`msg_template`、`msg_message`。  
+> **MVP 未建表**：`msg_task`、`msg_variable`、`template_variable`、`carrier_account`、`policy` 等（对应 scheduled/variables 能力当前为 501）。
+
 #### `msg_template`
 
 | 字段 | 类型 | 说明 |
@@ -218,6 +221,8 @@ erDiagram
 | 限流 | `verify:rate:{target}` | 60 秒 |
 
 规范见 [ADR.md](../ADR.md) §5。可选 MySQL `verification_code` 表仅用于离线审计，MVP 不建表。
+
+**scene 枚举**（实现于 `VerificationCodeService` / `common.message.MessageConstants`）：`REGISTER`、`LOGIN`、`PASSWORD_RESET`。Redis key 示例：`verify:email:REGISTER:user@example.com`。
 
 **对应 API**：`/internal/message/email_code/send`、`/internal/message/phone_code/send`、`/internal/message/verify`。
 

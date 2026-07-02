@@ -74,6 +74,21 @@ class UserServiceTest {
         Map<String, Object> resp = userService.register(req);
         assertEquals(0, resp.get("code"));
         assertNotNull(resp.get("data"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) resp.get("data");
+        Long userId = ((Number) data.get("userId")).longValue();
+
+        Map<String, Object> permResp = userService.getPermissions(userId);
+        assertEquals(0, permResp.get("code"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> permData = (Map<String, Object>) permResp.get("data");
+        @SuppressWarnings("unchecked")
+        List<String> roles = (List<String>) permData.get("roles");
+        assertTrue(roles.contains("member"));
+        if (userId == 1L) {
+            assertTrue(roles.contains("admin"));
+            assertEquals(Boolean.TRUE, permData.get("is_admin"));
+        }
     }
 
     @Test
@@ -141,6 +156,22 @@ class UserServiceTest {
         req.put("password", "password123");
         Map<String, Object> resp = userService.register(req);
         assertEquals(0, resp.get("code"));
+    }
+
+    @Test
+    @Order(8)
+    void testLaterUserGetsMemberGroupOnly() {
+        Long userId = registerUser("USERNAME", "member_only_user", "pass123456");
+        assertTrue(userId > 1L);
+        Map<String, Object> resp = userService.getPermissions(userId);
+        assertEquals(0, resp.get("code"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) resp.get("data");
+        @SuppressWarnings("unchecked")
+        List<String> roles = (List<String>) data.get("roles");
+        assertTrue(roles.contains("member"));
+        assertFalse(roles.contains("admin"));
+        assertNull(data.get("is_admin"));
     }
 
     // ============================ 登录 ============================
@@ -317,10 +348,62 @@ class UserServiceTest {
 
     @Test
     @Order(42)
+    void testLoginRejectedAfterDeregister() {
+        Long userId = registerUser("USERNAME", "deregloginuser", "pass123");
+        userService.deregister(userId);
+
+        Map<String, Object> loginReq = new HashMap<>();
+        loginReq.put("credentialType", "USERNAME");
+        loginReq.put("credential", "deregloginuser");
+        loginReq.put("password", "pass123");
+        Map<String, Object> resp = userService.login(loginReq);
+        assertEquals(403, resp.get("code"));
+        assertEquals("账户已注销，无法登录", resp.get("message"));
+    }
+
+    @Test
+    @Order(43)
     void testLogout() {
         Long userId = registerUser("USERNAME", "logoutuser", "pass123");
         Map<String, Object> resp = userService.logout(userId);
         assertEquals(0, resp.get("code"));
+    }
+
+    @Test
+    @Order(44)
+    void testRegisterAfterDeregister() {
+        Long userId = registerUser("USERNAME", "rereguser", "pass123");
+        userService.deregister(userId);
+
+        Map<String, Object> req = new HashMap<>();
+        req.put("credentialType", "USERNAME");
+        req.put("credential", "rereguser");
+        req.put("password", "newpass456");
+        Map<String, Object> resp = userService.register(req);
+        assertEquals(0, resp.get("code"), "注销后同凭证应可重新注册: " + resp.get("message"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) resp.get("data");
+        assertEquals(userId, ((Number) data.get("userId")).longValue());
+    }
+
+    @Test
+    @Order(45)
+    void testRegisterAfterDeregisterCanLogin() {
+        Long userId = registerUser("USERNAME", "reregloginuser", "oldpass1");
+        userService.deregister(userId);
+
+        Map<String, Object> regReq = new HashMap<>();
+        regReq.put("credentialType", "USERNAME");
+        regReq.put("credential", "reregloginuser");
+        regReq.put("password", "newpass789");
+        assertEquals(0, userService.register(regReq).get("code"));
+
+        Map<String, Object> loginReq = new HashMap<>();
+        loginReq.put("credentialType", "USERNAME");
+        loginReq.put("credential", "reregloginuser");
+        loginReq.put("password", "newpass789");
+        Map<String, Object> loginResp = userService.login(loginReq);
+        assertEquals(0, loginResp.get("code"), "重注册后应可用新密码登录: " + loginResp.get("message"));
     }
 
     // ============================ 管理员创建用户 ============================
@@ -764,7 +847,7 @@ class UserServiceTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> groups = (List<Map<String, Object>>)
                 ((Map<String, Object>) resp.get("data")).get("groups");
-        assertEquals(2, groups.size());
+        assertEquals(3, groups.size());
     }
 
     // ============================ 权限申请与审批 ============================
@@ -972,11 +1055,52 @@ class UserServiceTest {
         Map<String, Object> req = new HashMap<>();
         req.put("userId", userId);
         req.put("sessionId", "session-abc-123");
+        req.put("deviceId", "device-abc-123");
         req.put("deviceType", "WEB");
         req.put("clientIp", "10.0.0.1");
         req.put("userAgent", "Chrome/120");
         Map<String, Object> resp = userService.registerSession(req);
         assertEquals(0, resp.get("code"));
+    }
+
+    @Test
+    @Order(1411)
+    void testRegisterSessionUpsertSameDevice() {
+        Long userId = registerUser("USERNAME", "upsertdevice", "pass123");
+        Map<String, Object> req1 = new HashMap<>();
+        req1.put("userId", userId);
+        req1.put("sessionId", "session-v1");
+        req1.put("deviceId", "same-device-id");
+        userService.registerSession(req1);
+
+        Map<String, Object> req2 = new HashMap<>();
+        req2.put("userId", userId);
+        req2.put("sessionId", "session-v2");
+        req2.put("deviceId", "same-device-id");
+        Map<String, Object> resp = userService.registerSession(req2);
+        assertEquals(0, resp.get("code"));
+
+        Map<String, Object> sessions = userService.getUserSessions(userId);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) sessions.get("data");
+        assertEquals(1, ((Number) data.get("count")).intValue());
+    }
+
+    @Test
+    @Order(1431)
+    void testTerminateDevice() {
+        Long userId = registerUser("USERNAME", "terminatedevice", "pass123");
+        Map<String, Object> req = new HashMap<>();
+        req.put("userId", userId);
+        req.put("sessionId", "session-by-device");
+        req.put("deviceId", "device-to-kick");
+        userService.registerSession(req);
+
+        Map<String, Object> resp = userService.terminateDevice(userId, "device-to-kick");
+        assertEquals(0, resp.get("code"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) resp.get("data");
+        assertEquals("session-by-device", data.get("sessionId"));
     }
 
     @Test
@@ -986,8 +1110,9 @@ class UserServiceTest {
         Map<String, Object> req = new HashMap<>();
         req.put("userId", userId);
         req.put("sessionId", "session-dup-456");
+        req.put("deviceId", "device-dup-456");
         userService.registerSession(req);
-        // 重复注册应返回成功，但不重复插入
+        // 重复 sessionId 应返回成功，但不重复插入
         Map<String, Object> resp = userService.registerSession(req);
         assertEquals(0, resp.get("code"));
     }
@@ -999,6 +1124,7 @@ class UserServiceTest {
         Map<String, Object> req = new HashMap<>();
         req.put("userId", userId);
         req.put("sessionId", "session-get-1");
+        req.put("deviceId", "device-get-1");
         req.put("deviceType", "ANDROID");
         userService.registerSession(req);
 
@@ -1016,6 +1142,7 @@ class UserServiceTest {
         Map<String, Object> req = new HashMap<>();
         req.put("userId", userId);
         req.put("sessionId", "session-term-789");
+        req.put("deviceId", "device-term-789");
         userService.registerSession(req);
 
         Map<String, Object> resp = userService.terminateSession("session-term-789");
@@ -1036,19 +1163,22 @@ class UserServiceTest {
         Map<String, Object> s1 = new HashMap<>();
         s1.put("userId", userId);
         s1.put("sessionId", "keep-session");
+        s1.put("deviceId", "device-keep");
         userService.registerSession(s1);
 
         Map<String, Object> s2 = new HashMap<>();
         s2.put("userId", userId);
         s2.put("sessionId", "other-session-1");
+        s2.put("deviceId", "device-other-1");
         userService.registerSession(s2);
 
         Map<String, Object> s3 = new HashMap<>();
         s3.put("userId", userId);
         s3.put("sessionId", "other-session-2");
+        s3.put("deviceId", "device-other-2");
         userService.registerSession(s3);
 
-        Map<String, Object> resp = userService.terminateOtherSessions(userId, "keep-session");
+        Map<String, Object> resp = userService.terminateOtherSessions(userId, "keep-session", "device-keep");
         assertEquals(0, resp.get("code"));
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) resp.get("data");
@@ -1062,6 +1192,7 @@ class UserServiceTest {
         Map<String, Object> req = new HashMap<>();
         req.put("userId", userId);
         req.put("sessionId", "stale-session");
+        req.put("deviceId", "device-stale");
         userService.registerSession(req);
 
         Map<String, Object> cleanReq = new HashMap<>();

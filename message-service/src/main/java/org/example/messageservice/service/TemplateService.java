@@ -3,14 +3,16 @@ package org.example.messageservice.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.example.common.message.MessageConstants;
-import org.example.messageservice.entity.*;
-import org.example.messageservice.mapper.*;
+import org.example.messageservice.entity.MsgTemplate;
+import org.example.messageservice.mapper.MsgTemplateMapper;
 import org.example.messageservice.support.ServiceResults;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -33,9 +35,15 @@ public class TemplateService {
         String name = stringVal(request.get("name"));
         String content = stringVal(request.get("content"));
         String channelType = stringVal(request.get("channelType"));
-        if (name == null || name.isBlank()) return ServiceResults.error(400, "name 不能为空");
-        if (content == null || content.isBlank()) return ServiceResults.error(400, "content 不能为空");
-        if (channelType == null || !MessageConstants.isMvpChannel(channelType)) return ServiceResults.error(400, "无效的 channelType");
+        if (name == null || name.isBlank()) {
+            return ServiceResults.error(400, "name 不能为空");
+        }
+        if (content == null || content.isBlank()) {
+            return ServiceResults.error(400, "content 不能为空");
+        }
+        if (channelType == null || !MessageConstants.isMvpChannel(channelType)) {
+            return ServiceResults.error(400, "无效的 channelType");
+        }
 
         MsgTemplate template = new MsgTemplate();
         template.setName(name);
@@ -57,9 +65,15 @@ public class TemplateService {
         int size = intVal(params.get("size"), 20);
 
         QueryWrapper<MsgTemplate> wrapper = new QueryWrapper<>();
-        if (params.get("channelType") != null) wrapper.eq("channel_type", String.valueOf(params.get("channelType")));
-        if (params.get("status") != null) wrapper.eq("status", String.valueOf(params.get("status")));
-        if (params.get("keyword") != null && !String.valueOf(params.get("keyword")).isBlank()) wrapper.like("name", String.valueOf(params.get("keyword")));
+        if (params.get("channelType") != null) {
+            wrapper.eq("channel_type", String.valueOf(params.get("channelType")));
+        }
+        if (params.get("status") != null) {
+            wrapper.eq("status", String.valueOf(params.get("status")));
+        }
+        if (params.get("keyword") != null && !String.valueOf(params.get("keyword")).isBlank()) {
+            wrapper.like("name", String.valueOf(params.get("keyword")));
+        }
         wrapper.orderByDesc("template_id");
 
         Page<MsgTemplate> pageResult = templateMapper.selectPage(new Page<>(page, size), wrapper);
@@ -88,15 +102,24 @@ public class TemplateService {
 
     public Map<String, Object> update(Map<String, Object> request) {
         Long id = longVal(request.get("id"));
-        if (id == null) return ServiceResults.error(400, "id 不能为空");
+        if (id == null) {
+            return ServiceResults.error(400, "id 不能为空");
+        }
         MsgTemplate template = templateMapper.selectById(id);
-        if (template == null) return ServiceResults.error(404, "模板不存在");
-
-        if (request.containsKey("name")) template.setName(stringVal(request.get("name")));
-        if (request.containsKey("content")) template.setContent(stringVal(request.get("content")));
+        if (template == null) {
+            return ServiceResults.error(404, "模板不存在");
+        }
+        if (request.containsKey("name")) {
+            template.setName(stringVal(request.get("name")));
+        }
+        if (request.containsKey("content")) {
+            template.setContent(stringVal(request.get("content")));
+        }
         if (request.containsKey("status")) {
             String status = stringVal(request.get("status"));
-            if (!VALID_STATUS.contains(status)) return ServiceResults.error(400, "无效的 status");
+            if (!VALID_STATUS.contains(status)) {
+                return ServiceResults.error(400, "无效的 status");
+            }
             template.setStatus(status);
         }
         template.setUpdatedAt(LocalDateTime.now());
@@ -118,11 +141,19 @@ public class TemplateService {
     }
 
     public MsgTemplate getActiveTemplate(Long templateId, String channelType) {
-        if (templateId == null) return null;
+        if (templateId == null) {
+            return null;
+        }
         MsgTemplate template = templateMapper.selectById(templateId);
-        if (template == null) return null;
-        if (channelType != null && !channelType.equals(template.getChannelType())) return null;
-        if (!"ACTIVE".equals(template.getStatus())) return null;
+        if (template == null) {
+            return null;
+        }
+        if (channelType != null && !channelType.equals(template.getChannelType())) {
+            return null;
+        }
+        if (!"ACTIVE".equals(template.getStatus())) {
+            return null;
+        }
         return template;
     }
 
@@ -140,7 +171,16 @@ public class TemplateService {
 
     // ==================== 模板变量 CRUD ====================
 
-    public Map<String, Object> getVariableSchema() { return ServiceResults.ok(Map.of("types", List.of("STRING", "NUMBER", "DATE"))); }
+    public Map<String, Object> getVariableSchema() { 
+        Map<String, Object> schema = new HashMap<>();
+        schema.put("rules", List.of(
+                Map.of("name", "code", "required", true, "description", "验证码，6 位数字"),
+                Map.of("name", "username", "required", false, "description", "用户名"),
+                Map.of("name", "link", "required", false, "description", "链接 URL")
+        ));
+        schema.put("placeholderFormat", "${varName}");
+        return ServiceResults.ok(schema);
+    }
 
     public Map<String, Object> createVariable(Map<String, Object> req) {
         String key = stringVal(req.get("varKey"));
@@ -198,7 +238,21 @@ public class TemplateService {
         return view;
     }
 
-    private String stringVal(Object value) { return value == null ? null : String.valueOf(value); }
-    private int intVal(Object value, int defaultValue) { return value == null ? defaultValue : Integer.parseInt(String.valueOf(value)); }
-    private Long longVal(Object value) { return value == null ? null : Long.valueOf(String.valueOf(value)); }
+    private String stringVal(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private int intVal(Object value, int defaultValue) {
+        if (value == null) {
+            return defaultValue;
+        }
+        return Integer.parseInt(String.valueOf(value));
+    }
+
+    private Long longVal(Object value) {
+        if (value == null) {
+            return null;
+        }
+        return Long.valueOf(String.valueOf(value));
+    }
 }

@@ -173,8 +173,12 @@ public class VerificationCodeService {
     }
 
     private String channelFromCredentialType(String credentialType, String target) {
-        if ("PHONE".equalsIgnoreCase(credentialType)) return "phone";
-        if ("EMAIL".equalsIgnoreCase(credentialType)) return "email";
+        if ("PHONE".equalsIgnoreCase(credentialType)) {
+            return "phone";
+        }
+        if ("EMAIL".equalsIgnoreCase(credentialType)) {
+            return "email";
+        }
         return target.contains("@") ? "email" : "phone";
     }
 }

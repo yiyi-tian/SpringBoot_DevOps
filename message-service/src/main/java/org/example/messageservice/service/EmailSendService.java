@@ -39,7 +39,7 @@ public class EmailSendService {
             helper.setText(body, false);
             sender.send(message);
         } catch (Exception e) {
-            throw new RuntimeException("邮件发送失败: " + e.getMessage(), e);
+            throw new IllegalStateException("邮件发送失败: " + e.getMessage(), e);
         }
     }
 
@@ -47,9 +47,15 @@ public class EmailSendService {
         if (carrier != null && carrier.getConfigJson() != null && !carrier.getConfigJson().isBlank()) {
             try {
                 JsonNode node = objectMapper.readTree(carrier.getConfigJson());
-                if (node.hasNonNull("from")) return node.get("from").asText();
-                if (node.hasNonNull("username")) return node.get("username").asText();
-            } catch (Exception ignored) {}
+                if (node.hasNonNull("from")) {
+                    return node.get("from").asText();
+                }
+                if (node.hasNonNull("username")) {
+                    return node.get("username").asText();
+                }
+            } catch (Exception ignored) {
+                // fall through
+            }
         }
         if (mailProperties.getFrom() != null && !mailProperties.getFrom().isBlank()) {
             return mailProperties.getFrom();

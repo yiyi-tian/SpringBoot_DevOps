@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: message-service
+  namespace: devops
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: message-service
+  template:
+    metadata:
+      labels:
+        app: message-service
+    spec:
+      containers:
+        - name: message-service
+          image: devops/message-service:0.2.0-SNAPSHOT
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8082
+          envFrom:
+            - configMapRef:
+                name: devops-app-config
+            - secretRef:
+                name: devops-app-secret
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:mysql://mysql:3306/devops_message?serverTimezone=Asia/Shanghai&characterEncoding=utf8"
+          volumeMounts:
+            - name: access-logs
+              mountPath: /app/logs/access
+          readinessProbe:
+            tcpSocket:
+              port: 8082
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: access-logs
+          persistentVolumeClaim:
+            claimName: access-logs
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: message-service
+  namespace: devops
+spec:
+  type: ClusterIP
+  selector:
+    app: message-service
+  ports:
+    - port: 8082
+      targetPort: 8082

@@ -12,7 +12,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -78,7 +80,9 @@ public class MessageDispatchService {
             }
             record.setStatus("SUCCESS");
             messageMapper.insert(record);
-            return ServiceResults.ok(Map.of("messageId", record.getMessageId()));
+            Map<String, Object> data = new HashMap<>();
+            data.put("messageId", record.getMessageId());
+            return ServiceResults.ok(data);
         } catch (Exception e) {
             record.setStatus("FAILED");
             record.setErrorMessage(truncate(e.getMessage(), 500));
@@ -114,7 +118,12 @@ public class MessageDispatchService {
 
         Page<MsgMessage> pageResult = messageMapper.selectPage(new Page<>(page, size), wrapper);
         List<Map<String, Object>> list = pageResult.getRecords().stream().map(this::toView).collect(Collectors.toList());
-        return ServiceResults.ok(Map.of("list", list, "total", pageResult.getTotal(), "page", page, "size", size));
+        Map<String, Object> data = new HashMap<>();
+        data.put("list", list);
+        data.put("total", pageResult.getTotal());
+        data.put("page", page);
+        data.put("size", size);
+        return ServiceResults.ok(data);
     }
 
     public Map<String, Object> deleteSendingRecord(Map<String, Object> request) {
@@ -166,10 +175,28 @@ public class MessageDispatchService {
         return view;
     }
 
-    private String stringVal(Object value) { return value == null ? null : String.valueOf(value); }
-    private Long longVal(Object value) { return value == null ? null : Long.valueOf(String.valueOf(value)); }
-    private int intVal(Object value, int defaultValue) { return value == null ? defaultValue : Integer.parseInt(String.valueOf(value)); }
+    private String stringVal(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private Long longVal(Object value) {
+        if (value == null) {
+            return null;
+        }
+        return Long.valueOf(String.valueOf(value));
+    }
+
+    private int intVal(Object value, int defaultValue) {
+        if (value == null) {
+            return defaultValue;
+        }
+        return Integer.parseInt(String.valueOf(value));
+    }
+
     private String truncate(String message, int max) {
-        return (message == null || message.length() <= max) ? message : message.substring(0, max);
+        if (message == null) {
+            return null;
+        }
+        return message.length() <= max ? message : message.substring(0, max);
     }
 }

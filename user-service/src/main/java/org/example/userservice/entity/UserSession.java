@@ -15,6 +15,8 @@ public class UserSession {
 
     private Long userId;
 
+    private String deviceId;
+
     private String sessionId;
 
     private String deviceType;      // WEB / ANDROID / IOS / DESKTOP / UNKNOWN

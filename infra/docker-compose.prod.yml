@@ -1,0 +1,13 @@
+# Production overlay: do not publish internal infra ports to the host.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+version: "3.8"
+
+services:
+  mysql:
+    ports: !reset []
+
+  redis:
+    ports: !reset []
+
+  clickhouse:
+    ports: !reset []

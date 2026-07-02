@@ -110,7 +110,7 @@
 | 项 | 决策 |
 |----|------|
 | 采集工具 | **Vector**（**不用 Filebeat**；见 `infra/vector/vector.toml`） |
-| 源目录 | IDE：`shared-logs/access/{serviceName}/`；Docker：`logs/access/{serviceName}/`；local compose 将 `shared-logs/access` 挂载为 Vector 的 `/var/log/access` |
+| 源目录 | IDE：仓库根 `shared-logs/access/{serviceName}/`（`output-dir: ../shared-logs/access`）；Docker：`logs/access/{serviceName}/` 写入 `access_logs` 共享卷；Vector 读 `/var/log/access` |
 | 触发 | Tail 文件事件；批量/超时刷新（§2.2） |
 | 本地清理 | 日志框架按保留时长/体积删除旧 JSON（§2.1） |
 | ClickHouse | 表 TTL **90 天**（`docs/sql/04_clickhouse_access_log.sql`） |

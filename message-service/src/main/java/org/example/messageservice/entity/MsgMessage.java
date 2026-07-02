@@ -15,6 +15,7 @@ public class MsgMessage {
 
     private Long taskId;
     private Long templateId;
+    private Long initiatorUserId;
     private Long carrierId;
     private String receiver;
     private String renderedContent;
