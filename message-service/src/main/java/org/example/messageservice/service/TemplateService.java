@@ -1,8 +1,11 @@
 package org.example.messageservice.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.example.common.message.MessageConstants;
 import org.example.messageservice.entity.*;
 import org.example.messageservice.mapper.*;
+import org.example.messageservice.support.ServiceResults;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -13,45 +16,63 @@ import java.util.stream.Collectors;
 @Service
 public class TemplateService {
 
-    @Autowired private MsgTemplateMapper templateMapper;
-    @Autowired private MsgVariableMapper variableMapper;
-    @Autowired private TemplateVariableMapper templateVariableMapper;
+    private static final List<String> VALID_STATUS = List.of("DRAFT", "ACTIVE", "DISABLED");
 
-    public Map<String, Object> create(Map<String, Object> req) {
-        String name = (String) req.get("name");
-        String content = (String) req.get("content");
-        String channelType = (String) req.get("channelType");
-        if (name == null || name.isEmpty()) return error(400, "模板名称不能为空");
-        if (content == null || content.isEmpty()) return error(400, "模板内容不能为空");
-        if (channelType == null || channelType.isEmpty()) return error(400, "channelType 不能为空");
+    @Autowired
+    private MsgTemplateMapper templateMapper;
 
-        MsgTemplate t = new MsgTemplate();
-        t.setName(name); t.setContent(content); t.setChannelType(channelType);
-        t.setStatus("DRAFT"); t.setCreatedAt(LocalDateTime.now()); t.setUpdatedAt(LocalDateTime.now());
-        templateMapper.insert(t);
+    @Autowired
+    private MsgVariableMapper variableMapper;
 
-        List<Map<String, Object>> variables = (List) req.get("variables");
-        if (variables != null) bindVariables(t.getTemplateId(), variables);
+    @Autowired
+    private TemplateVariableMapper templateVariableMapper;
 
-        return ok(Map.of("templateId", t.getTemplateId()));
+    // ==================== 模板 CRUD ====================
+
+    public Map<String, Object> create(Map<String, Object> request) {
+        String name = stringVal(request.get("name"));
+        String content = stringVal(request.get("content"));
+        String channelType = stringVal(request.get("channelType"));
+        if (name == null || name.isBlank()) return ServiceResults.error(400, "name 不能为空");
+        if (content == null || content.isBlank()) return ServiceResults.error(400, "content 不能为空");
+        if (channelType == null || !MessageConstants.isMvpChannel(channelType)) return ServiceResults.error(400, "无效的 channelType");
+
+        MsgTemplate template = new MsgTemplate();
+        template.setName(name);
+        template.setContent(content);
+        template.setChannelType(channelType);
+        template.setStatus(stringVal(request.get("status")) != null ? stringVal(request.get("status")) : "DRAFT");
+        template.setCreatedAt(LocalDateTime.now());
+        template.setUpdatedAt(LocalDateTime.now());
+        templateMapper.insert(template);
+
+        List<Map<String, Object>> variables = (List) request.get("variables");
+        if (variables != null) bindVariables(template.getTemplateId(), variables);
+
+        return ServiceResults.ok(Map.of("templateId", template.getTemplateId()));
     }
 
     public Map<String, Object> query(Map<String, Object> params) {
-        int page = intVal(params.get("page"), 1), size = intVal(params.get("size"), 20);
-        QueryWrapper<MsgTemplate> w = new QueryWrapper<>();
-        if (params.get("channelType") != null) w.eq("channel_type", params.get("channelType"));
-        if (params.get("status") != null) w.eq("status", params.get("status"));
-        w.orderByDesc("created_at");
-        long total = templateMapper.selectCount(w);
-        w.last("LIMIT " + ((page - 1) * size) + ", " + size);
-        return ok(Map.of("templates", templateMapper.selectList(w), "total", total, "page", page, "size", size));
+        int page = intVal(params.get("page"), 1);
+        int size = intVal(params.get("size"), 20);
+
+        QueryWrapper<MsgTemplate> wrapper = new QueryWrapper<>();
+        if (params.get("channelType") != null) wrapper.eq("channel_type", String.valueOf(params.get("channelType")));
+        if (params.get("status") != null) wrapper.eq("status", String.valueOf(params.get("status")));
+        if (params.get("keyword") != null && !String.valueOf(params.get("keyword")).isBlank()) wrapper.like("name", String.valueOf(params.get("keyword")));
+        wrapper.orderByDesc("template_id");
+
+        Page<MsgTemplate> pageResult = templateMapper.selectPage(new Page<>(page, size), wrapper);
+        List<Map<String, Object>> list = pageResult.getRecords().stream().map(this::toView).collect(Collectors.toList());
+        return ServiceResults.ok(Map.of("list", list, "total", pageResult.getTotal(), "page", page, "size", size));
     }
 
-    public Map<String, Object> get(Long id) {
-        MsgTemplate t = templateMapper.selectById(id);
-        if (t == null) return error(404, "模板不存在");
+    public Map<String, Object> get(Long templateId) {
+        MsgTemplate template = templateMapper.selectById(templateId);
+        if (template == null) return ServiceResults.error(404, "模板不存在");
+
         List<Map<String, Object>> variables = templateVariableMapper.selectList(
-                new QueryWrapper<TemplateVariable>().eq("template_id", id)).stream().map(tv -> {
+                new QueryWrapper<TemplateVariable>().eq("template_id", templateId)).stream().map(tv -> {
             MsgVariable v = variableMapper.selectById(tv.getVariableId());
             if (v == null) return null;
             Map<String, Object> m = new HashMap<>();
@@ -61,34 +82,48 @@ public class TemplateService {
             m.put("defaultValue", tv.getDefaultOverride() != null ? tv.getDefaultOverride() : v.getDefaultValue());
             return m;
         }).filter(Objects::nonNull).collect(Collectors.toList());
-        return ok(Map.of("template", t, "variables", variables));
+
+        return ServiceResults.ok(Map.of("template", toView(template), "variables", variables));
     }
 
-    public Map<String, Object> update(Map<String, Object> req) {
-        Long id = req.get("id") != null ? Long.valueOf(String.valueOf(req.get("id"))) : null;
-        if (id == null) return error(400, "id 不能为空");
-        MsgTemplate t = templateMapper.selectById(id);
-        if (t == null) return error(404, "模板不存在");
-        if (req.containsKey("name")) t.setName((String) req.get("name"));
-        if (req.containsKey("content")) t.setContent((String) req.get("content"));
-        if (req.containsKey("channelType")) t.setChannelType((String) req.get("channelType"));
-        if (req.containsKey("status")) t.setStatus((String) req.get("status"));
-        t.setUpdatedAt(LocalDateTime.now());
-        templateMapper.updateById(t);
+    public Map<String, Object> update(Map<String, Object> request) {
+        Long id = longVal(request.get("id"));
+        if (id == null) return ServiceResults.error(400, "id 不能为空");
+        MsgTemplate template = templateMapper.selectById(id);
+        if (template == null) return ServiceResults.error(404, "模板不存在");
 
-        List<Map<String, Object>> variables = (List) req.get("variables");
+        if (request.containsKey("name")) template.setName(stringVal(request.get("name")));
+        if (request.containsKey("content")) template.setContent(stringVal(request.get("content")));
+        if (request.containsKey("status")) {
+            String status = stringVal(request.get("status"));
+            if (!VALID_STATUS.contains(status)) return ServiceResults.error(400, "无效的 status");
+            template.setStatus(status);
+        }
+        template.setUpdatedAt(LocalDateTime.now());
+        templateMapper.updateById(template);
+
+        List<Map<String, Object>> variables = (List) request.get("variables");
         if (variables != null) {
             templateVariableMapper.delete(new QueryWrapper<TemplateVariable>().eq("template_id", id));
             bindVariables(id, variables);
         }
-        return ok();
+        return ServiceResults.ok();
     }
 
-    public Map<String, Object> delete(Long id) {
-        if (templateMapper.selectById(id) == null) return error(404, "模板不存在");
-        templateVariableMapper.delete(new QueryWrapper<TemplateVariable>().eq("template_id", id));
-        templateMapper.deleteById(id);
-        return ok();
+    public Map<String, Object> delete(Long templateId) {
+        if (templateMapper.selectById(templateId) == null) return ServiceResults.error(404, "模板不存在");
+        templateVariableMapper.delete(new QueryWrapper<TemplateVariable>().eq("template_id", templateId));
+        templateMapper.deleteById(templateId);
+        return ServiceResults.ok();
+    }
+
+    public MsgTemplate getActiveTemplate(Long templateId, String channelType) {
+        if (templateId == null) return null;
+        MsgTemplate template = templateMapper.selectById(templateId);
+        if (template == null) return null;
+        if (channelType != null && !channelType.equals(template.getChannelType())) return null;
+        if (!"ACTIVE".equals(template.getStatus())) return null;
+        return template;
     }
 
     private void bindVariables(Long templateId, List<Map<String, Object>> variables) {
@@ -103,49 +138,67 @@ public class TemplateService {
         }
     }
 
-    // ============ 模板变量 ============
-    public Map<String, Object> getVariableSchema() { return ok(Map.of("types", List.of("STRING", "NUMBER", "DATE"))); }
+    // ==================== 模板变量 CRUD ====================
+
+    public Map<String, Object> getVariableSchema() { return ServiceResults.ok(Map.of("types", List.of("STRING", "NUMBER", "DATE"))); }
+
     public Map<String, Object> createVariable(Map<String, Object> req) {
-        String key = (String) req.get("varKey");
-        String name = (String) req.get("name");
-        if (key == null || key.isEmpty()) return error(400, "varKey 不能为空");
-        if (name == null || name.isEmpty()) return error(400, "变量名不能为空");
+        String key = stringVal(req.get("varKey"));
+        String name = stringVal(req.get("name"));
+        if (key == null || key.isEmpty()) return ServiceResults.error(400, "varKey 不能为空");
+        if (name == null || name.isEmpty()) return ServiceResults.error(400, "变量名不能为空");
         MsgVariable v = new MsgVariable();
-        v.setVarKey(key); v.setName(name); v.setType((String) req.getOrDefault("type", "STRING"));
+        v.setVarKey(key); v.setName(name); v.setType(stringVal(req.get("type")) != null ? stringVal(req.get("type")) : "STRING");
         v.setRequired((Integer) req.getOrDefault("required", 1));
-        v.setDefaultValue((String) req.get("defaultValue"));
-        v.setScope((String) req.getOrDefault("scope", "GLOBAL"));
-        v.setStatus("ACTIVE"); v.setDescription((String) req.get("description"));
+        v.setDefaultValue(stringVal(req.get("defaultValue")));
+        v.setScope(stringVal(req.get("scope")) != null ? stringVal(req.get("scope")) : "GLOBAL");
+        v.setStatus("ACTIVE"); v.setDescription(stringVal(req.get("description")));
         v.setCreatedAt(LocalDateTime.now()); v.setUpdatedAt(LocalDateTime.now());
         variableMapper.insert(v);
-        return ok(Map.of("variableId", v.getVariableId()));
-    }
-    public Map<String, Object> queryVariables(Map<String, Object> params) {
-        return ok(Map.of("variables", variableMapper.selectList(null)));
-    }
-    public Map<String, Object> getVariable(String id) {
-        MsgVariable v = variableMapper.selectById(Long.valueOf(id));
-        return v == null ? error(404, "变量不存在") : ok(v);
-    }
-    public Map<String, Object> updateVariable(String id, Map<String, Object> req) {
-        MsgVariable v = variableMapper.selectById(Long.valueOf(id));
-        if (v == null) return error(404, "变量不存在");
-        if (req.containsKey("name")) v.setName((String) req.get("name"));
-        if (req.containsKey("type")) v.setType((String) req.get("type"));
-        if (req.containsKey("required")) v.setRequired((Integer) req.get("required"));
-        if (req.containsKey("defaultValue")) v.setDefaultValue((String) req.get("defaultValue"));
-        if (req.containsKey("description")) v.setDescription((String) req.get("description"));
-        v.setUpdatedAt(LocalDateTime.now());
-        variableMapper.updateById(v);
-        return ok();
-    }
-    public Map<String, Object> deleteVariable(String id) {
-        variableMapper.deleteById(Long.valueOf(id));
-        return ok();
+        return ServiceResults.ok(Map.of("variableId", v.getVariableId()));
     }
 
-    private int intVal(Object v, int d) { return v == null ? d : Integer.parseInt(String.valueOf(v)); }
-    private Map<String, Object> ok() { return Map.of("code", 0, "message", "ok"); }
-    private Map<String, Object> ok(Object data) { return Map.of("code", 0, "message", "ok", "data", data); }
-    private Map<String, Object> error(int c, String m) { return Map.of("code", c, "message", m); }
+    public Map<String, Object> queryVariables(Map<String, Object> params) {
+        return ServiceResults.ok(Map.of("variables", variableMapper.selectList(null)));
+    }
+
+    public Map<String, Object> getVariable(String id) {
+        MsgVariable v = variableMapper.selectById(Long.valueOf(id));
+        return v == null ? ServiceResults.error(404, "变量不存在") : ServiceResults.ok(v);
+    }
+
+    public Map<String, Object> updateVariable(String id, Map<String, Object> req) {
+        MsgVariable v = variableMapper.selectById(Long.valueOf(id));
+        if (v == null) return ServiceResults.error(404, "变量不存在");
+        if (req.containsKey("name")) v.setName(stringVal(req.get("name")));
+        if (req.containsKey("type")) v.setType(stringVal(req.get("type")));
+        if (req.containsKey("required")) v.setRequired((Integer) req.get("required"));
+        if (req.containsKey("defaultValue")) v.setDefaultValue(stringVal(req.get("defaultValue")));
+        if (req.containsKey("description")) v.setDescription(stringVal(req.get("description")));
+        v.setUpdatedAt(LocalDateTime.now());
+        variableMapper.updateById(v);
+        return ServiceResults.ok();
+    }
+
+    public Map<String, Object> deleteVariable(String id) {
+        variableMapper.deleteById(Long.valueOf(id));
+        return ServiceResults.ok();
+    }
+
+    // ==================== 私有辅助 ====================
+
+    private Map<String, Object> toView(MsgTemplate template) {
+        Map<String, Object> view = new HashMap<>();
+        view.put("id", template.getTemplateId());
+        view.put("templateId", template.getTemplateId());
+        view.put("name", template.getName());
+        view.put("content", template.getContent());
+        view.put("channelType", template.getChannelType());
+        view.put("status", template.getStatus());
+        return view;
+    }
+
+    private String stringVal(Object value) { return value == null ? null : String.valueOf(value); }
+    private int intVal(Object value, int defaultValue) { return value == null ? defaultValue : Integer.parseInt(String.valueOf(value)); }
+    private Long longVal(Object value) { return value == null ? null : Long.valueOf(String.valueOf(value)); }
 }
