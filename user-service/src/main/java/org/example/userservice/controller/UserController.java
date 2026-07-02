@@ -285,12 +285,6 @@ public class UserController {
         return userService.terminateSession(sessionId);
     }
 
-<<<<<<< HEAD
-    @DeleteMapping("/internal/user/{userId}/sessions/others")
-    public Map<String, Object> terminateOtherSessions(@PathVariable Long userId, @RequestBody Map<String, Object> request) {
-        String currentSessionId = (String) request.get("currentSessionId");
-        return userService.terminateOtherSessions(userId, currentSessionId);
-=======
     @DeleteMapping("/internal/user/{userId}/devices/{deviceId}")
     public Map<String, Object> terminateDevice(@PathVariable Long userId, @PathVariable String deviceId) {
         return userService.terminateDevice(userId, deviceId);
@@ -301,7 +295,6 @@ public class UserController {
         String currentSessionId = (String) request.get("currentSessionId");
         String currentDeviceId = (String) request.get("currentDeviceId");
         return userService.terminateOtherSessions(userId, currentSessionId, currentDeviceId);
->>>>>>> develop2
     }
 
     @PostMapping("/internal/user/sessions/clean-stale")

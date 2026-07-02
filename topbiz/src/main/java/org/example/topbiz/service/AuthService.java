@@ -134,12 +134,7 @@ public class AuthService {
         Map<String, Object> userRequest = new HashMap<>();
         userRequest.put("credentialType", credentialType.name());
         userRequest.put("credential", credential);
-<<<<<<< HEAD
-        userRequest.put("password", code != null ? "" : password);
-        userRequest.put("code", code);
-=======
         userRequest.put("password", password.trim());
->>>>>>> develop2
 
         Map<String, Object> userResult = userServiceClient.register(userRequest);
         if (userResult == null || !"0".equals(String.valueOf(userResult.get("code")))) {
@@ -424,17 +419,8 @@ public class AuthService {
             }
         }
 
-<<<<<<< HEAD
-        // 调用 user-service 登录
-        Map<String, Object> userRequest = new HashMap<>();
-        userRequest.put("credentialType", credentialType);
-        userRequest.put("credential", credential);
-        userRequest.put("password", password);
-        userRequest.put("code", code);
-=======
         return result;
     }
->>>>>>> develop2
 
     public Map<String, Object> bindCredential(Long userId, Map<String, Object> request, String password) {
         CredentialType credentialType = CredentialValidator.inferCredentialType(request).orElse(null);

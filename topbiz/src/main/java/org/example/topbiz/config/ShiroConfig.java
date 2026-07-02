@@ -31,17 +31,9 @@ public class ShiroConfig {
     @Bean
     public ShiroFilterChainDefinition shiroFilterChainDefinition() {
         DefaultShiroFilterChainDefinition chain = new DefaultShiroFilterChainDefinition();
-<<<<<<< HEAD
-        // 公开接口
-        chain.addPathDefinition("/api/v1/register/**", "anon");
-        chain.addPathDefinition("/api/v1/login/**", "anon");
-
-        // 管理员接口
-=======
         chain.addPathDefinition("/api/v1/register", "anon");
         chain.addPathDefinition("/api/v1/login", "anon");
         chain.addPathDefinition("/api/v1/password/reset/**", "anon");
->>>>>>> develop2
         chain.addPathDefinition("/api/v1/admin/**", "roles[admin]");
         chain.addPathDefinition("/api/v1/log/**", "roles[admin]");
         chain.addPathDefinition("/api/v1/templates/**", "roles[admin]");

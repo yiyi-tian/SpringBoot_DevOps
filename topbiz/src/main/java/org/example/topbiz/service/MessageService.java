@@ -40,14 +40,6 @@ public class MessageService {
 
     private MessageServiceClient messageServiceClient;
 
-<<<<<<< HEAD
-    /**
-     * 允许的渠道类型
-     */
-    private static final Set<String> VALID_CHANNEL_TYPES = new HashSet<>(Arrays.asList(
-            "IN_APP", "SMS", "EMAIL", "FEISHU", "WECHAT"
-    ));
-=======
 
 
     @Autowired
@@ -55,7 +47,6 @@ public class MessageService {
     private DevopsMessagingProperties messagingProperties;
 
 
->>>>>>> develop2
 
     // ==================== 消息发送 ====================
 
@@ -234,7 +225,6 @@ public class MessageService {
         return messageServiceClient.getTemplate(id);
     }
 
-<<<<<<< HEAD
     /**
      * 删除模板
      */
@@ -242,10 +232,6 @@ public class MessageService {
         return messageServiceClient.deleteTemplate(id);
     }
     
-=======
-
-
->>>>>>> develop2
     // ==================== 模板变量 ====================
 
 
@@ -270,13 +256,9 @@ public class MessageService {
 
     }
 
-<<<<<<< HEAD
     public Map<String, Object> queryVariables(Map<String, Object> params) {
         return messageServiceClient.queryVariables(params);
     }
-=======
-
->>>>>>> develop2
 
     public Map<String, Object> getVariable(String variableId) {
 
@@ -392,16 +374,12 @@ public class MessageService {
 
     }
 
-<<<<<<< HEAD
     /**
      *信箱查询 
      **/
     public Map<String, Object> getInbox(Map<String, Object> params) {
         return messageServiceClient.getInbox(params);
     }
-}
-=======
-
 
     private String requireChannelType(Map<String, Object> request) {
 
@@ -414,7 +392,6 @@ public class MessageService {
         return String.valueOf(request.get("channelType"));
 
     }
-
 
 
     private void validateChannelType(String channelType) {
@@ -434,7 +411,6 @@ public class MessageService {
     }
 
 
-
     private void injectInitiatorUserId(Map<String, Object> request) {
 
         Long userId = SecurityUtilsHelper.getCurrentUserId();
@@ -446,7 +422,4 @@ public class MessageService {
         }
 
     }
-
 }
-
->>>>>>> develop2

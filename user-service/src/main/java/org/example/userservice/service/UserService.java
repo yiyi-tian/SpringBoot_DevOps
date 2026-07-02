@@ -695,7 +695,6 @@ public class UserService {
         }
 
         // 3. 根据权限推导角色
-        List<String> roles = new ArrayList<>();
         if (permCodes.contains("*") || permCodes.contains("admin")) {
             roles.add("admin");
         } else {

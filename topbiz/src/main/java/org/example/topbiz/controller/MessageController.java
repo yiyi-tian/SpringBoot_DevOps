@@ -73,13 +73,10 @@ public class MessageController {
     public Result<Map<String, Object>> createVariable(@RequestBody Map<String, Object> request) {
         return ServiceResultMapper.toResult(messageService.createVariable(request));
     }
-<<<<<<< HEAD
     @GetMapping("/variables")
     public Result<Map<String, Object>> queryVariables(@RequestParam Map<String, Object> params) {
         return Result.ok(messageService.queryVariables(params));
     }
-=======
->>>>>>> develop2
 
     @GetMapping("/variables/{variableId}")
     public Result<Map<String, Object>> getVariable(@PathVariable String variableId) {
@@ -129,7 +126,6 @@ public class MessageController {
                                                    @RequestBody(required = false) Map<String, Object> request) {
         return ServiceResultMapper.toResult(messageService.testCarrier(id, request));
     }
-<<<<<<< HEAD
     
     @GetMapping("/messages/inbox")
     public Result<Map<String, Object>> getInbox(@RequestParam Map<String, Object> params) {
@@ -140,6 +136,3 @@ public class MessageController {
         return Result.error(500, "查询失败");
     }
 }
-=======
-}
->>>>>>> develop2

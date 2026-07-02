@@ -27,28 +27,9 @@ public class AuthController {
         if (validationError.isPresent()) {
             return Result.error(AuthRequestValidator.httpCodeForError(validationError.get()), validationError.get());
         }
-<<<<<<< HEAD
-
-        // 密码和验证码二选一
-        if ((password == null || password.isEmpty()) && (code == null || code.isEmpty())) {
-            return Result.error(400, "请输入密码或验证码");
-        }
-        if ((password != null && !password.isEmpty()) && (code != null && !code.isEmpty())) {
-            return Result.error(400, "密码和验证码只能选其一");
-        }
-
-        // 密码注册：校验长度
-        if (password != null && !password.isEmpty() && password.length() < 6) {
-            return Result.error(400, "密码长度不能少于6位");
-        }
-
-        Map<String, Object> result = authService.register(credential, password, code);
-        return Result.ok(result);
-=======
         String clientIp = resolveClientIp(httpRequest);
         String userAgent = httpRequest.getHeader("User-Agent");
         return ServiceResultMapper.toResult(authService.handleRegister(request, clientIp, userAgent));
->>>>>>> develop2
     }
 
     @PostMapping("/api/v1/login")
@@ -214,26 +195,8 @@ public class AuthController {
         }
 
         String password = (String) request.get("password");
-<<<<<<< HEAD
-        String code = (String) request.get("code");
-
-        if (credential == null || credential.isEmpty()) {
-            return Result.error(400, "请输入手机号/邮箱/用户名");
-        }
-
-        if ((password == null || password.isEmpty()) && (code == null || code.isEmpty())) {
-            return Result.error(400, "请输入密码或验证码");
-        }
-        if ((password != null && !password.isEmpty()) && (code != null && !code.isEmpty())) {
-            return Result.error(400, "密码和验证码只能选其一");
-        }
-
-        Map<String, Object> result = authService.login(credential, password, code);
-        return Result.ok(result);
-=======
         Map<String, Object> result = authService.bindCredential(userId, request, password);
         return ServiceResultMapper.toResult(result);
->>>>>>> develop2
     }
 
     // ==================== 权限申请 ====================

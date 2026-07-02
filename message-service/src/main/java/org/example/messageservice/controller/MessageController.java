@@ -88,17 +88,17 @@ public class MessageController {
 
     @GetMapping("/internal/variables/{variableId}")
     public Map<String, Object> getVariable(@PathVariable String variableId) {
-        return messageService.getVariable(Long.valueOf(variableId));
+        return messageService.getVariable(variableId);
     }
 
     @PutMapping("/internal/variables/{variableId}")
     public Map<String, Object> updateVariable(@PathVariable String variableId, @RequestBody Map<String, Object> request) {
-        return messageService.updateVariable(Long.valueOf(variableId), request);
+        return messageService.updateVariable(variableId, request);
     }
 
     @DeleteMapping("/internal/variables/{variableId}")
     public Map<String, Object> deleteVariable(@PathVariable String variableId) {
-        return messageService.deleteVariable(Long.valueOf(variableId));
+        return messageService.deleteVariable(variableId);
     }
 
     // ==================== 载体管理 ====================
