@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: log-service
-          image: devops/log-service:0.2.0-SNAPSHOT
+          image: docker.io/library/infra-log-service:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8083

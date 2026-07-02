@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: message-service
-          image: devops/message-service:0.2.0-SNAPSHOT
+          image: docker.io/library/infra-message-service:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8082

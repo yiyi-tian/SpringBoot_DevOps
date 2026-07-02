@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: topbiz
-          image: devops/topbiz:0.2.0-SNAPSHOT
+          image: docker.io/library/infra-topbiz:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
