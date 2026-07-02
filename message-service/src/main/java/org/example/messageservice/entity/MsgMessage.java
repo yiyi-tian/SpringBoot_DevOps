@@ -18,6 +18,7 @@ public class MsgMessage {
     private Long initiatorUserId;
     private Long carrierId;
     private String receiver;
+    private String channelType;
     private String renderedContent;
     private String status;
     private String providerMsgId;

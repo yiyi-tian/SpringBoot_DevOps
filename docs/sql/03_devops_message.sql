@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS `msg_message` (
     `initiator_user_id` BIGINT NULL,
     `carrier_id`       BIGINT NULL COMMENT '载体ID',
     `receiver`         VARCHAR(255) NOT NULL COMMENT '接收人（userId/手机号/邮箱）',
+    `channel_type`     VARCHAR(32) NOT NULL COMMENT '通道类型',
     `rendered_content` TEXT NULL COMMENT '消息内容',
     `status`           VARCHAR(32) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/SUCCESS/FAILED',
     `provider_msg_id`  VARCHAR(128) NULL COMMENT '第三方回执ID',
