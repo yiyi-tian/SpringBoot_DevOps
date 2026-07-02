@@ -1,6 +1,7 @@
 package org.example.messageservice.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+from com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.messageservice.entity.MsgCarrier;
 import org.example.messageservice.mapper.MsgCarrierMapper;
 import org.example.messageservice.support.ConfigMasker;
@@ -15,6 +16,8 @@ public class CarrierService {
 
     @Autowired
     private MsgCarrierMapper carrierMapper;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public Map<String, Object> list(String channelType) {
         QueryWrapper<MsgCarrier> w = new QueryWrapper<>();
@@ -85,5 +88,58 @@ public class CarrierService {
         QueryWrapper<MsgCarrier> w = new QueryWrapper<>();
         w.eq("channel_type", channelType).eq("enabled", 1).isNull("deleted_at").last("LIMIT 1");
         return carrierMapper.selectOne(w);
+    }
+
+        private MsgCarrier findActive(Long id) {
+        if (id == null) {
+            return null;
+        }
+        MsgCarrier carrier = carrierMapper.selectById(id);
+        if (carrier == null || carrier.getDeletedAt() != null) {
+            return null;
+        }
+        return carrier;
+    }
+
+    private Map<String, Object> toView(MsgCarrier carrier) {
+        Map<String, Object> view = new HashMap<>();
+        view.put("id", carrier.getCarrierId());
+        view.put("carrierId", carrier.getCarrierId());
+        view.put("name", carrier.getName());
+        view.put("provider", carrier.getProvider());
+        view.put("channelType", carrier.getChannelType());
+        view.put("enabled", carrier.getEnabled() == 1);
+        if (carrier.getConfigJson() != null) {
+            view.put("configJson", ConfigMasker.maskJson(carrier.getConfigJson()));
+        }
+        return view;
+    }
+
+    private String toJson(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof String s) {
+            return s;
+        }
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("configJson 格式无效");
+        }
+    }
+
+    private String stringVal(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private int boolVal(Object value, int defaultValue) {
+        if (value == null) {
+            return defaultValue;
+        }
+        if (value instanceof Boolean b) {
+            return b ? 1 : 0;
+        }
+        return "true".equalsIgnoreCase(String.valueOf(value)) || "1".equals(String.valueOf(value)) ? 1 : 0;
     }
 }
