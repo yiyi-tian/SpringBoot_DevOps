@@ -24,20 +24,37 @@ echo "  一键建表脚本"
 echo "  MySQL: ${MYSQL_HOST}:${MYSQL_PORT}"
 echo "========================================="
 
-# ---------- 获取 SQL 文件 ----------
-MYSQL_FILES=$(ls "${SCRIPT_DIR}"/*.sql 2>/dev/null | grep -v -i clickhouse | sort -t'_' -k1,1n)
+# ---------- 获取 SQL 文件（修复排序）----------
+# 使用固定顺序而不是简单排序
+MYSQL_FILES=(
+    "${SCRIPT_DIR}/00_docker_mysql_init.sql"
+    "${SCRIPT_DIR}/01_devops_log.sql"
+    "${SCRIPT_DIR}/02_devops_user.sql"
+    "${SCRIPT_DIR}/02a_user_rbac_migrate.sql"
+    "${SCRIPT_DIR}/02b_user_rbac_seed.sql"
+    "${SCRIPT_DIR}/03_devops_message.sql"
+)
+
+# 过滤掉不存在的文件
+MYSQL_FILES_EXIST=()
+for f in "${MYSQL_FILES[@]}"; do
+    if [ -f "$f" ]; then
+        MYSQL_FILES_EXIST+=("$f")
+    fi
+done
+
 CH_FILES=$(ls "${SCRIPT_DIR}"/*clickhouse*.sql 2>/dev/null | sort)
 
-if [ -z "$MYSQL_FILES" ] && [ -z "$CH_FILES" ]; then
+if [ ${#MYSQL_FILES_EXIST[@]} -eq 0 ] && [ -z "$CH_FILES" ]; then
     echo "未找到 SQL 文件"
     exit 1
 fi
 
 # ==================== MySQL ====================
-if [ -n "$MYSQL_FILES" ]; then
+if [ ${#MYSQL_FILES_EXIST[@]} -gt 0 ]; then
     echo ""
     echo "--- MySQL SQL 文件 ---"
-    for f in $MYSQL_FILES; do
+    for f in "${MYSQL_FILES_EXIST[@]}"; do
         echo "  $(basename $f)"
     done
 
@@ -49,7 +66,7 @@ CREATE DATABASE IF NOT EXISTS devops_message DEFAULT CHARACTER SET utf8mb4;
 CREATE DATABASE IF NOT EXISTS devops_log DEFAULT CHARACTER SET utf8mb4;
 "
 
-    for f in $MYSQL_FILES; do
+    for f in "${MYSQL_FILES_EXIST[@]}"; do
         FILENAME=$(basename "$f")
         echo "[MySQL] 执行 ${FILENAME}..."
 

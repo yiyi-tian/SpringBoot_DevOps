@@ -117,7 +117,8 @@ public class MessageService {
     public Map<String, Object> deleteCarrier(Long id) {
         return carrierService.delete(id);
     }
-    public Map<String, Object> testCarrier(Long id) {
-        return carrierService.test(id, null);
-    }
+    public Map<String, Object> testCarrier(Long id, Map<String, Object> request) {
+        String testTo = request != null ? (String) request.get("testTo") : null;
+    return carrierService.test(id, testTo);
+}
 }

@@ -1,5 +1,7 @@
 package org.example.topbiz.config;
 
+import jakarta.servlet.http.HttpServletResponse;
+import org.apache.shiro.ShiroException;
 import org.apache.shiro.authc.AuthenticationException;
 import org.apache.shiro.authz.AuthorizationException;
 import org.apache.shiro.authz.UnauthorizedException;
@@ -13,16 +15,22 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    // Shiro 授权异常（子类优先匹配）
+    @ExceptionHandler({UnauthorizedException.class, AuthorizationException.class})
+    public Result<String> handleAuthorizationException(Exception e) {
+        return Result.error(403, "权限不足，无法访问该资源");
+    }
+
     // Shiro 认证异常
     @ExceptionHandler(AuthenticationException.class)
     public Result<String> handleAuthenticationException(AuthenticationException e) {
         return Result.error(401, "未登录或登录已过期，请重新登录");
     }
 
-    // Shiro 授权异常
-    @ExceptionHandler({UnauthorizedException.class, AuthorizationException.class})
-    public Result<String> handleAuthorizationException(Exception e) {
-        return Result.error(403, "权限不足，无法访问该资源");
+    // Shiro 其他异常兜底
+    @ExceptionHandler(ShiroException.class)
+    public Result<String> handleShiroException(ShiroException e) {
+        return Result.error(401, "认证异常: " + e.getMessage());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -35,7 +43,7 @@ public class GlobalExceptionHandler {
         return Result.error(e.getCode(), e.getMessage());
     }
 
-    // HTTP Interface 调用异常（替代 FeignException）
+    // HTTP Interface 调用异常
     @ExceptionHandler(WebClientResponseException.class)
     public Result<String> handleWebClientResponseException(WebClientResponseException e) {
         int status = e.getStatusCode().value();
@@ -45,7 +53,6 @@ public class GlobalExceptionHandler {
         return Result.error(502, "内部服务调用失败，请稍后重试");
     }
 
-    // 网络连接异常（替代 FeignException 的连接超时）
     @ExceptionHandler(WebClientRequestException.class)
     public Result<String> handleWebClientRequestException(WebClientRequestException e) {
         return Result.error(502, "内部服务连接失败，请稍后重试");

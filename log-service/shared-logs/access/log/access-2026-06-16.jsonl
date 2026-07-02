@@ -1,2 +1,0 @@
-{"method":"POST","uri":"/internal/log/record","timestamp":1781616758429,"level":"INFO","trace_id":"f6ee069f-08f6-4b5a-8c9d-6dc9ca16e53a","service_name":"log","client_ip":"127.0.0.1","cost_ms":2191,"http_status":200,"biz_code":"0"}
-{"method":"POST","uri":"/internal/log/record","timestamp":1781617536929,"level":"INFO","trace_id":"a68f1373-8ec7-4450-a077-091b9d50ae09","service_name":"log","client_ip":"127.0.0.1","cost_ms":708,"http_status":200,"biz_code":"0"}
